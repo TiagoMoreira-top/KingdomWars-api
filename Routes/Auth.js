@@ -1,57 +1,70 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken'); // The magic ink
 const Player = require('../Models/Player');
-const Village = require('../Models/Village');
 
 router.post('/register', async (req, res) => {
     try {
-        const { email, password, villageName } = req.body;
+        const { name, password } = req.body;
 
-        const playerExists = await Player.findOne({ email });
-        if (playerExists) return res.status(400).json({ error: "Email already registered" });
+        if (!name || !password) {
+            return res.status(400).json({ error: "Name and cipher are required to enlist." });
+        }
+
+        const playerExists = await Player.findOne({ name: name.toLowerCase() });
+        if (playerExists) {
+            return res.status(400).json({ error: "That name is already etched in the chronicles." });
+        }
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
         const newPlayer = new Player({ 
-            email, 
+            name: name,
             password: hashedPassword 
         });
-        const savedPlayer = await newPlayer.save();
+        
+        await newPlayer.save();
 
-        // Generate a random coordinate between 490 and 510
-        const randomX = Math.floor(Math.random() * (510 - 490 + 1)) + 490;
-        const randomY = Math.floor(Math.random() * (510 - 490 + 1)) + 490;
+        // Forge the token immediately so they don't have to log in right after registering
+        const token = jwt.sign({ id: newPlayer._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 
-        const newVillage = new Village({
-            name: villageName,
-            ownerId: savedPlayer._id,
-            resources: { wood: 500, clay: 500, iron: 400 },
-            buildings: { headquarters: 1, timberCamp: 1, clayPit: 1, ironMine: 1 },
-            x: randomX,
-            y: randomY
+        res.status(201).json({ 
+            success: true, 
+            token, // Send the magic scroll
+            player: { id: newPlayer._id, name: newPlayer.name }
         });
-        await newVillage.save();
-
-        res.status(201).json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: "The scribes failed to record thy name." });
     }
 });
 
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
-        const player = await Player.findOne({ email });
-        if (!player) return res.status(400).json({ error: "Player not found" });
+        const { name, password } = req.body;
+
+        const player = await Player.findOne({ name: name.toLowerCase() });
+        if (!player) {
+            return res.status(400).json({ error: "No such warrior found." });
+        }
 
         const isMatch = await bcrypt.compare(password, player.password);
-        if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
+        if (!isMatch) {
+            return res.status(400).json({ error: "The secret cipher is incorrect." });
+        }
 
-        res.json({ playerId: player._id });
+        // Forge the magic seal
+        const token = jwt.sign({ id: player._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+
+        res.json({ 
+            success: true,
+            token, // This is what the middleware looks for!
+            playerId: player._id,
+            name: player.name 
+        });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: "The gates are jammed. Try again later." });
     }
 });
 

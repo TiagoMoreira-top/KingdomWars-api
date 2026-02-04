@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const PlayerSchema = new mongoose.Schema({
-  email: {
+  name: {
     type: String,
     required: true,
     unique: true,

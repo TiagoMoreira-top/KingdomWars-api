@@ -91,22 +91,24 @@ const syncUpgradeQueue = async (village) => {
     const now = Date.now();
     let updated = false;
 
-    // Filter out finished buildings
     const remainingQueue = village.upgradeQueue.filter(item => {
-        if (item.finishTime <= now) {
-            // The upgrade is finished! 
-            // 1. Increase the building level
+        if (item.finishTime <= now + 500) {
+            // Use the bracket notation to update the building
             village.buildings[item.building] += 1;
             updated = true;
-            // 2. Return false to remove it from the queue
             return false;
         }
-        // 3. Keep it in the queue if not finished
         return true;
     });
 
     if (updated) {
         village.upgradeQueue = remainingQueue;
+        
+        // CRITICAL: Tell Mongoose 'buildings' changed
+        village.markModified('buildings');
+        // Tell Mongoose 'upgradeQueue' changed
+        village.markModified('upgradeQueue');
+        
         await village.save();
     }
 

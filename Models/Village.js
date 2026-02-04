@@ -4,7 +4,7 @@ const VillageSchema = new mongoose.Schema({
   name: { type: String, required: true },
   ownerId: { 
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Player', // Changed from User to Player
+    ref: 'Player',
     required: true 
   },
   x: { type: Number, default: 500 },
@@ -26,7 +26,7 @@ const VillageSchema = new mongoose.Schema({
     },
     research: {
         spearmanLevel: { type: Number, default: 1 },
-        swordsmanLevel: { type: Number, default: 0 }, // 0 means not researched yet
+        swordsmanLevel: { type: Number, default: 0 },
         archerLevel: { type: Number, default: 0 }
     },
   upgradeQueue: [
