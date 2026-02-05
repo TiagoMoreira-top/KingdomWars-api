@@ -88,7 +88,14 @@ const VillageSchema = new mongoose.Schema({
     {
       building:    { type: String },
       targetLevel: { type: Number },
-      finishTime:  { type: Number } 
+      startTime:  { type: Number },
+      finishTime:  { type: Number },
+      costs: {
+        wood: { type: Number },
+        clay: { type: Number },
+        stone: { type: Number },
+        population: { type: Number }
+      } 
     }
   ],
   trainingQueue: [
@@ -96,7 +103,50 @@ const VillageSchema = new mongoose.Schema({
       unitKey:   { type: String },
       amount:     { type: Number },
       startTime:  { type: Number },
-      finishTime: { type: Number }
+      finishTime: { type: Number },
+      timePerUnit: { type: Number },
+      unitsLeft: { type: Number },
+      lastUpdate: { type: Number },
+      costs: {
+        wood: { type: Number },
+        clay: { type: Number },
+        stone: { type: Number },
+        population: { type: Number }
+      } 
+    }
+  ],
+  stableQueue: [
+    {
+      unitKey:   { type: String },
+      amount:     { type: Number },
+      startTime:  { type: Number },
+      finishTime: { type: Number },
+      timePerUnit: { type: Number },
+      unitsLeft: { type: Number },
+      lastUpdate: { type: Number },
+      costs: {
+        wood: { type: Number },
+        clay: { type: Number },
+        stone: { type: Number },
+        population: { type: Number }
+      } 
+    }
+  ],
+  workshopQueue: [
+    {
+      unitKey:   { type: String },
+      amount:     { type: Number },
+      startTime:  { type: Number },
+      finishTime: { type: Number },
+      timePerUnit: { type: Number },
+      unitsLeft: { type: Number },
+      lastUpdate: { type: Number },
+      costs: {
+        wood: { type: Number },
+        clay: { type: Number },
+        stone: { type: Number },
+        population: { type: Number }
+      } 
     }
   ],
 

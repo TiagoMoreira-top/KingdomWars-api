@@ -90,19 +90,13 @@ exports.upgradeBuilding = async (req, res) => {
     }
 
     // 👨‍🌾 POPULATION CHECK
-    // Calculate how much labor this specific level-up requires
-    if (bConfig.basePop) {
-      const popNeededForNextLevel = Math.floor(
-        bConfig.basePop * Math.pow(bConfig.popMultiplier, nextTargetLevel - 1)
-      );
-      
-      const availablePop = village.population.habitants - village.population.used;
+    const popNeeded = bConfig.basePop ? Math.floor(bConfig.basePop * Math.pow(bConfig.popMultiplier, nextTargetLevel - 1)) : 0;
+    const availablePop = village.population.habitants - village.population.used;
 
-      if (availablePop < popNeededForNextLevel) {
-        return res.status(403).json({ 
-          error: `👨‍🌾 OVERCROWDED: Need ${popNeededForNextLevel} free citizens, but only ${availablePop} are idle. Expand thy Farm!` 
-        });
-      }
+    if (availablePop < popNeeded) {
+      return res.status(403).json({ 
+        error: `👨‍🌾 OVERCROWDED: Need ${popNeeded} free citizens. Expand thy Farm!` 
+      });
     }
 
     // 🛡️ REQUIREMENT CHECKING
@@ -123,9 +117,15 @@ exports.upgradeBuilding = async (req, res) => {
       return res.status(402).json({ error: "💰 EMPTY VAULTS: Thy coffers lack the gold for such ambition." });
     }
 
-    // ⏳ PARALLEL TIME
+    // ⏳ THE STACKING CHRONOLOGY
+    // Work out when the current builders will be free
+    const lastJobFinish = queue.length > 0 
+      ? Math.max(...queue.map(q => new Date(q.finishTime).getTime()))
+      : Date.now();
+
     const buildTimeSeconds = Math.floor(bConfig.baseBuildTime * Math.pow(bConfig.timeMultiplier, costMultiplierLevel));
-    const finishTime = Date.now() + (buildTimeSeconds * 1000);
+    const startTimestamp = lastJobFinish;
+    const finishTimestamp = startTimestamp + (buildTimeSeconds * 1000);
 
     // 🏗️ DB UPDATE
     const updateResult = await villageModel.updateOne(
@@ -135,26 +135,33 @@ exports.upgradeBuilding = async (req, res) => {
           "resources.wood": -woodCost, 
           "resources.clay": -clayCost, 
           "resources.stone": -stoneCost,
-          "population.used": bConfig.basePop ? Math.floor(bConfig.basePop * Math.pow(bConfig.popMultiplier, nextTargetLevel - 1)) : 0
+          "population.used": popNeeded
         },
         $push: {
           upgradeQueue: {
             building: buildingKey,
             targetLevel: nextTargetLevel,
-            finishTime: finishTime
+            startTime: startTimestamp, // Track when the masons start
+            finishTime: finishTimestamp,
+            costs: {
+              wood: woodCost,
+              clay: clayCost,
+              stone: stoneCost,
+              population: popNeeded
+            }
           }
         }
       }
     );
 
     if (updateResult.modifiedCount === 0) {
-      throw new Error("Update failed: Village not modified.");
+      throw new Error("Update failed.");
     }
 
     res.status(200).json({
       success: true,
-      message: `🏗️ STARTED: ${bConfig.name} Level ${nextTargetLevel} is underway!`,
-      finishTime
+      message: `🏗️ ENQUEUED: ${bConfig.name} Level ${nextTargetLevel} added to the scrolls!`,
+      finishTime: finishTimestamp
     });
 
   } catch (error) {
@@ -169,53 +176,70 @@ exports.cancelUpgrade = async (req, res) => {
     const { jobId } = req.body;
     const villageModel = req.getVillageModel();
 
-    // ⚔️ 1. Fetch the document directly from the model to ensure we have the 'save' method
     const village = await villageModel.findById(villageId);
     if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
 
-    // ⚔️ 2. Locate the project to be struck from the record
     const jobIndex = village.upgradeQueue.findIndex(job => job._id.toString() === jobId);
     if (jobIndex === -1) {
       return res.status(404).json({ error: "📜 VANISHED: That project is no longer in the queue." });
     }
 
-    const job = village.upgradeQueue[jobIndex];
-    const bConfig = BUILDINGS[job.building];
-    const cancelledLevel = job.targetLevel;
+    const cancelledJob = village.upgradeQueue[jobIndex];
+    const bConfig = BUILDINGS[cancelledJob.building];
+    const cancelledLevel = cancelledJob.targetLevel;
 
-    // 💰 3. CALCULATE REFUND
-    const costMultiplierLevel = cancelledLevel - 1;
-    const woodRefund = Math.floor(bConfig.baseCost.wood * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
-    const clayRefund = Math.floor(bConfig.baseCost.clay * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
-    const stoneRefund = Math.floor(bConfig.baseCost.stone * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
-    const popToRelease = bConfig.basePop 
-      ? Math.floor(bConfig.basePop * Math.pow(bConfig.popMultiplier, costMultiplierLevel)) 
-      : 0;
-
-    // 🔄 4. THE CHAIN REPAIR (The Shift)
-    // We remove the job and decrement targetLevel for any subsequent jobs of the same building type
+    const { wood = 0, clay = 0, stone = 0, population = 0 } = cancelledJob.costs || {};
+    
     village.upgradeQueue.splice(jobIndex, 1);
 
-    village.upgradeQueue.forEach(q => {
-      if (q.building === job.building && q.targetLevel > cancelledLevel) {
-        q.targetLevel -= 1;
+    // 🏗️ 3. THE SHIFT: Adjust all jobs that were scheduled AFTER this one
+    village.upgradeQueue.forEach((job, index) => {
+      // 1. DOWNSHIFT: Check if this is the same building type at a higher level
+      const isSameBuildingSuccession = job.building === cancelledJob.building && job.targetLevel > cancelledLevel;
+      
+      if (isSameBuildingSuccession) {
+        job.targetLevel -= 1;
+      }
+
+      // 2. TIMELINE RECONSTRUCTION: Only adjust jobs at or after the cancellation point
+      if (index >= jobIndex) {
+        const newStart = index === 0 
+          ? Date.now() 
+          : village.upgradeQueue[index - 1].finishTime;
         
-        // ⏳ Optional: Adjust finish time here if you want Level 3 to finish faster now that it's Level 2
+        let durationMs;
+
+        if (isSameBuildingSuccession) {
+          // RECALCULATE: Since the level decreased, the build time must also decrease
+          const bCfg = BUILDINGS[job.building];
+          const newLevelForCalc = job.targetLevel - 1; // Current level is now lower
+          
+          const recalculatedSeconds = Math.max(1, Math.floor(
+            bCfg.baseBuildTime * Math.pow(bCfg.timeMultiplier || 1.2, newLevelForCalc)
+          ));
+          
+          durationMs = recalculatedSeconds * 1000;
+        } else {
+          // PRESERVE: For unrelated buildings, keep their existing duration
+          durationMs = job.finishTime - job.startTime;
+        }
+
+        job.startTime = newStart;
+        job.finishTime = newStart + durationMs;
       }
     });
 
-    // 🏗️ 5. UPDATE COFFERS AND SAVE
-    village.resources.wood += woodRefund;
-    village.resources.clay += clayRefund;
-    village.resources.stone += stoneRefund;
-    village.population.used = Math.max(0, village.population.used - popToRelease);
+    // 💰 4. RESTORE THE TREASURY
+    village.resources.wood += wood;
+    village.resources.clay += clay;
+    village.resources.stone += stone;
+    village.population.used = Math.max(0, village.population.used - population);
 
-    // Use .save() to ensure Mongoose middleware and array tracking work correctly
     await village.save();
 
     res.status(200).json({
       success: true,
-      message: `⚒️ RESTRUCTURED: ${bConfig.name} Level ${cancelledLevel} halted. The line of succession has been updated.`,
+      message: `⚒️ RESTRUCTURED: ${bConfig.name} work halted. The masons have moved to the next task.`,
       village
     });
 
@@ -264,7 +288,9 @@ exports.recruitUnits = async (req, res) => {
       return res.status(402).json({ error: "📉 DEPLETED: Thy coffers or thy housing cannot support such a battalion." });
     }
 
-    const trainingBuilding = uConfig.requirements?.barracks ? 'barracks' : 'stable';
+    const trainingBuilding = uConfig.requirements?.stable ? 'stable' : 'barracks';
+    const queueKey = trainingBuilding === 'stable' ? 'stableQueue' : 'trainingQueue';
+
     const buildingLevel = village.buildings[trainingBuilding] || 0;
     const bConfig = BUILDINGS[trainingBuilding];
     const growthFactor = bConfig?.growthFactor || 0.1; 
@@ -273,20 +299,16 @@ exports.recruitUnits = async (req, res) => {
     const timePerUnit = uConfig.trainTime / speedMultiplier;
     const totalDuration = timePerUnit * amount;
 
-    // 🔄 4. QUEUE SEQUENCING (The Chain of Command)
     const now = new Date();
     let startTime;
 
-    if (village.trainingQueue && village.trainingQueue.length > 0) {
-      // Find the last job in the existing queue
-      const lastJob = village.trainingQueue[village.trainingQueue.length - 1];
-      const lastFinish = new Date(lastJob.finishTime);
+    const activeQueue = village[queueKey] || [];
 
-      // If the last finish time is in the past, the building was idle.
-      // We start from NOW. Otherwise, we start exactly when the last one finishes.
+    if (activeQueue.length > 0) {
+      const lastJob = activeQueue[activeQueue.length - 1];
+      const lastFinish = new Date(lastJob.finishTime);
       startTime = lastFinish < now ? now : lastFinish;
     } else {
-      // The grounds are empty; start immediately.
       startTime = now;
     }
 
@@ -297,19 +319,30 @@ exports.recruitUnits = async (req, res) => {
     village.resources.stone -= totalStone;
     village.population.used += totalPop;
 
-    village.trainingQueue.push({
+    if (!village[queueKey]) village[queueKey] = [];
+
+    village[queueKey].push({
       unitKey,
       amount,
+      unitsLeft: amount,
       startTime,
       finishTime,
-      totalDuration
+      timePerUnit: timePerUnit * 1000,
+      lastUpdate: startTime,
+      totalDuration,
+      costs: {
+        wood: totalWood,
+        clay: totalClay,
+        stone: totalStone,
+        population: totalPop
+      }
     });
 
     await village.save();
 
     res.status(200).json({
       success: true,
-      message: `⚔️ MUSTERED: ${amount} ${uConfig.name} have been added to the training grounds.`,
+      message: `⚔️ MUSTERED: ${amount} ${uConfig.name} have been added to the ${trainingBuilding} grounds.`,
       village
     });
 
@@ -325,71 +358,153 @@ exports.cancelRecruitment = async (req, res) => {
     const { jobId } = req.body;
     const villageModel = req.getVillageModel();
 
-    const village = await villageModel.findById(villageId);
+    let village = await villageModel.findById(villageId);
     if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
 
-    const jobIndex = village.trainingQueue.findIndex(j => j._id.toString() === jobId);
-    if (jobIndex === -1) {
+    // 🔥 PRE-SURGERY TICK: Process any units finished in the last few seconds
+    village = await VillageService.getUpdatedVillage(villageId, req.world); 
+
+    // 🕵️ Find which queue holds the job
+    const queueKeys = ['trainingQueue', 'stableQueue', 'workshopQueue'];
+    let foundQueueKey = null;
+    let jobIndex = -1;
+
+    for (const key of queueKeys) {
+      const idx = village[key].findIndex(j => j._id.toString() === jobId);
+      if (idx !== -1) {
+        foundQueueKey = key;
+        jobIndex = idx;
+        break;
+      }
+    }
+
+    if (!foundQueueKey) {
       return res.status(404).json({ error: "📜 VANISHED: This order is no longer in the scrolls." });
     }
 
-    const job = village.trainingQueue[jobIndex];
+    const activeQueue = village[foundQueueKey];
+    const job = activeQueue[jobIndex];
     const uConfig = UNITS[job.unitKey];
 
-    // 💰 1. THE REBATE
+    // 💰 1. THE REBATE (Calculated only on remaining units)
     const refundFactor = 0.9; 
-    village.resources.wood += Math.floor((uConfig.baseCost.wood || 0) * job.amount * refundFactor);
-    village.resources.clay += Math.floor((uConfig.baseCost.clay || 0) * job.amount * refundFactor);
-    village.resources.stone += Math.floor((uConfig.baseCost.stone || 0) * job.amount * refundFactor);
-    village.population.used = Math.max(0, village.population.used - (uConfig.population * job.amount));
+    const unitsToRefund = job.unitsLeft;
 
-    // ⚔️ 2. THE SURGERY
+    if (unitsToRefund > 0) {
+      village.resources.wood += Math.floor((uConfig.baseCost.wood || 0) * unitsToRefund * refundFactor);
+      village.resources.clay += Math.floor((uConfig.baseCost.clay || 0) * unitsToRefund * refundFactor);
+      village.resources.stone += Math.floor((uConfig.baseCost.stone || 0) * unitsToRefund * refundFactor);
+      
+      village.population.used = Math.max(0, village.population.used - (uConfig.population * unitsToRefund));
+    }
+
+    // ⚔️ 2. THE REMOVAL
     const wasFirst = jobIndex === 0;
-    village.trainingQueue.splice(jobIndex, 1);
+    activeQueue.splice(jobIndex, 1);
 
-    // ⏳ 3. THE CHAIN REPAIR (With Speed Multipliers)
+    // ⏳ 3. THE CHAIN REPAIR (Specific to this queue only)
     let runningTimestamp = Date.now();
 
-    village.trainingQueue.forEach((item, index) => {
+    activeQueue.forEach((item, index) => {
       const itemConfig = UNITS[item.unitKey];
       
-      // Calculate speed based on building level
-      const trainingBuilding = itemConfig.requirements?.barracks ? 'barracks' : 'stable';
+      // Determine building for this specific queue
+      const trainingBuilding = foundQueueKey === 'stableQueue' ? 'stable' : 
+                               foundQueueKey === 'workshopQueue' ? 'workshop' : 'barracks';
+                               
       const buildingLevel = village.buildings[trainingBuilding] || 0;
       const bConfig = BUILDINGS[trainingBuilding];
-      const growthFactor = bConfig?.growthFactor || 0.1; 
+      const speedMultiplier = 1 + (buildingLevel * (bConfig?.growthFactor || 0.1));
       
-      const speedMultiplier = 1 + (buildingLevel * growthFactor);
-      const timePerUnit = itemConfig.trainTime / speedMultiplier;
-      const totalDurationMs = (timePerUnit * item.amount) * 1000;
+      const msPerUnit = (itemConfig.trainTime / speedMultiplier) * 1000;
+      const totalRemainingMs = msPerUnit * item.unitsLeft;
 
       if (index === 0 && !wasFirst) {
-        // If the first unit stayed at the front, do not reset its progress
-        runningTimestamp = Number(item.finishTime);
+        // If we didn't remove the first item, the new first item stays on its current course
+        runningTimestamp = new Date(item.finishTime).getTime();
       } else {
-        // Shift this unit and everyone behind it
+        // Shift this job forward to fill the gap
         const newStart = runningTimestamp;
-        const newFinish = newStart + totalDurationMs;
+        const newFinish = newStart + totalRemainingMs;
         
-        item.startTime = newStart;
-        item.finishTime = newFinish;
+        item.startTime = new Date(newStart);
+        item.finishTime = new Date(newFinish);
+        item.lastUpdate = new Date(newStart);
         
         runningTimestamp = newFinish;
       }
     });
 
-    // 🛡️ 4. COMMIT TO THE CHRONICLES
-    village.markModified('trainingQueue');
+    village.markModified(foundQueueKey);
+    village.markModified('resources');
+    village.markModified('population');
     await village.save();
 
     res.status(200).json({
       success: true,
-      message: "🕊️ DISSOLVED: The training grounds have been cleared and the line moves forward.",
+      message: `🕊️ DISSOLVED: The order for ${unitsToRefund} warriors was halted. Resources returned.`,
       village
     });
 
   } catch (error) {
     console.error("Cancel Recruitment Error:", error);
     res.status(500).json({ error: "⚡ OMEN: The heavens forbid halting this work." });
+  }
+};
+
+exports.renameVillage = async (req, res) => {
+  try {
+    const { villageId } = req.params;
+    const { name } = req.body;
+    const villageModel = req.getVillageModel();
+
+    // ⚔️ 1. Validation: Ensure the name is worthy of a fiefdom
+    if (!name || name.trim().length < 3) {
+      return res.status(400).json({ 
+        error: "📜 REJECTED: A village name must be at least 3 characters long." 
+      });
+    }
+
+    if (name.length > 20) {
+      return res.status(400).json({ 
+        error: "📜 REJECTED: That title is too long for our maps and scrolls." 
+      });
+    }
+
+    // ⚔️ 2. Locate the territory
+    let village = await villageModel.findById(villageId);
+    if (!village) {
+      return res.status(404).json({ 
+        error: "🏰 MYSTERY: This land is not on our maps." 
+      });
+    }
+
+    // ⚔️ 3. Ownership Check (Assuming req.worldPlayer exists from your auth middleware)
+    if (village.ownerId.toString() !== req.worldPlayer._id.toString()) {
+      return res.status(403).json({ 
+        error: "⚔️ TREASON: Thou cannot rename a land that is not thine own!" 
+      });
+    }
+
+    // ⚔️ 4. The Rechristening
+    const oldName = village.name;
+    village.name = name.trim();
+
+    // In some setups, simple strings don't need markModified, 
+    // but it's safer to include it given your complex schema.
+    village.markModified('name');
+    await village.save();
+
+    res.status(200).json({
+      success: true,
+      message: `📜 DECREE: ${oldName} shall henceforth be known as ${village.name}.`,
+      newName: village.name
+    });
+
+  } catch (error) {
+    console.error("Rename Village Error:", error);
+    res.status(500).json({ 
+      error: "⚡ OMEN: The scribes have run out of ink; the name remains unchanged." 
+    });
   }
 };

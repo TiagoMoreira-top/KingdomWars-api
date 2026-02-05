@@ -14,13 +14,20 @@ const VillageService = {
         if (!village) throw new Error("⚔️ EXILE: Thou hast no land in this realm!");
 
         const now = Date.now();
+        let greatHallUpgraded = false;
 
         // 🏗️ 1. UPGRADE COMPLETION
         const completedJobs = village.upgradeQueue.filter(job => job.finishTime <= now);
         if (completedJobs.length > 0) {
+            completedJobs.sort((a, b) => a.finishTime - b.finishTime);
+
             completedJobs.forEach(job => {
                 const currentLevel = village.buildings[job.building] || 0;
                 village.buildings[job.building] = currentLevel + 1;
+
+                if (job.building === 'greatHall') {
+                    greatHallUpgraded = true;
+                }
 
                 const bConfig = BUILDINGS[job.building];
                 if (bConfig) {
@@ -30,30 +37,83 @@ const VillageService = {
                 village.upgradeQueue.pull(job._id);
             });
 
+            if (greatHallUpgraded && village.upgradeQueue.length > 0) {
+                village.upgradeQueue.forEach((job, index) => {
+                    const bCfg = BUILDINGS[job.building];
+                    const ghLvl = village.buildings.greatHall || 0;
+                    
+                    const speedFactor = Math.max(0.1, 1 - (ghLvl * 0.03));
+                    const costMultiplierLevel = job.targetLevel - 1;
+                    
+                    const newDurationSeconds = Math.max(1, Math.floor(
+                        bCfg.baseBuildTime * Math.pow(bCfg.timeMultiplier || 1.2, costMultiplierLevel) * speedFactor
+                    ));
+
+                    const newStart = index === 0 ? now : village.upgradeQueue[index - 1].finishTime;
+                    job.startTime = newStart;
+                    job.finishTime = newStart + (newDurationSeconds * 1000);
+                });
+            }
+
             village.markModified('buildings');
             village.markModified('upgradeQueue');
         }
 
-        // ⚔️ 2. RECRUITMENT COMPLETION
-        const completedTraining = village.trainingQueue.filter(job => job.finishTime <= now);
-        if (completedTraining.length > 0) {
-            completedTraining.forEach(job => {
-                const currentUnits = village.army[job.unitKey] || 0;
-                village.army[job.unitKey] = currentUnits + job.amount;
+        // ⚔️ 2. RECRUITMENT COMPLETION (Multi-Queue Trickle Logic)
+        const queueKeys = ['trainingQueue', 'stableQueue', 'workshopQueue'];
+        let anyQueueChanged = false;
 
-                village.trainingQueue.pull(job._id);
-            });
+        queueKeys.forEach(qKey => {
+            if (village[qKey] && village[qKey].length > 0) {
+                let buildingQueueChanged = false;
+                const activeJob = village[qKey][0];
+                const jobStartTime = new Date(activeJob.startTime).getTime();
+                
+                if (now >= jobStartTime) {
+                    const lastUpdate = new Date(activeJob.lastUpdate || activeJob.startTime).getTime();
+                    const msElapsed = now - lastUpdate;
+                    const msPerUnit = activeJob.timePerUnit;
 
+                    const unitsProduced = Math.floor(msElapsed / msPerUnit);
+
+                    if (unitsProduced > 0) {
+                        const actualToDeliver = Math.min(unitsProduced, activeJob.unitsLeft);
+                        const unitKey = activeJob.unitKey;
+                        
+                        village.army[unitKey] = (village.army[unitKey] || 0) + actualToDeliver;
+                        activeJob.unitsLeft -= actualToDeliver;
+                        activeJob.lastUpdate = new Date(lastUpdate + (actualToDeliver * msPerUnit));
+                        buildingQueueChanged = true;
+                        anyQueueChanged = true;
+                    }
+
+                    if (activeJob.unitsLeft <= 0) {
+                        const finishedJobLastUpdate = activeJob.lastUpdate;
+                        village[qKey].shift();
+                        
+                        if (village[qKey].length > 0) {
+                            village[qKey][0].lastUpdate = finishedJobLastUpdate;
+                        }
+                        buildingQueueChanged = true;
+                        anyQueueChanged = true;
+                    }
+                }
+
+                if (buildingQueueChanged) {
+                    village.markModified(qKey);
+                }
+            }
+        });
+
+        if (anyQueueChanged) {
             village.markModified('army');
-            village.markModified('trainingQueue');
         }
 
-        // 👨‍🌾 RECALCULATE CENSUS
+        // 👨‍🌾 3. RECALCULATE CENSUS & POINTS
         let totalUsed = 0;
         let totalHabitants = 0;
         let totalPoints = 0;
 
-        // 🏠 A. BUILDING CALCULATIONS
         Object.entries(village.buildings).forEach(([bKey, bLvl]) => {
             const config = BUILDINGS[bKey];
             if (!config || bLvl <= 0) return;
@@ -75,7 +135,6 @@ const VillageService = {
             }
         });
         
-        // 🛡️ B. MILITARY CALCULATIONS (Standing Army)
         Object.entries(village.army).forEach(([uKey, uAmount]) => {
             const uConfig = UNITS[uKey];
             if (uConfig && uAmount > 0) {
@@ -83,15 +142,16 @@ const VillageService = {
             }
         });
 
-        // 🏹 C. QUEUE CALCULATIONS (Units in Training)
-        village.trainingQueue.forEach(job => {
-            const uConfig = UNITS[job.unitKey];
-            if (uConfig) {
-                totalUsed += (job.amount * uConfig.population);
-            }
+        // Count population for all queues
+        queueKeys.forEach(qKey => {
+            (village[qKey] || []).forEach(job => {
+                const uConfig = UNITS[job.unitKey];
+                if (uConfig) {
+                    totalUsed += (job.amount * uConfig.population);
+                }
+            });
         });
 
-        // 📜 Apply the new census
         village.points = totalPoints;
         village.population = {
             habitants: totalHabitants,
@@ -99,8 +159,6 @@ const VillageService = {
         };
 
         village.markModified('population');
-
-        // ⚔️ RESOURCES: Tick after population/buildings are updated
         village = ResourceService.tick(village); 
 
         await village.save();

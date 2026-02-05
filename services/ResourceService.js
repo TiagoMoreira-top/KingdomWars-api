@@ -27,7 +27,7 @@ const ResourceService = {
         // Fetch storage capacity
         const capacity = this.calculateCapacity(
             BUILDINGS.warehouse.storageBase,
-            BUILDINGS.warehouse.costMultiplier,
+            BUILDINGS.warehouse.growthFactor,
             warehouseLvl
         );
 
@@ -40,7 +40,7 @@ const ResourceService = {
             
             const hourlyRate = this.calculateProduction(
                 BUILDINGS[buildingKey].productionBase,
-                BUILDINGS[buildingKey].costMultiplier,
+                BUILDINGS[buildingKey].growthFactor,
                 level
             );
 

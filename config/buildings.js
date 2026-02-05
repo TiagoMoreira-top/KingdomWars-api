@@ -14,34 +14,6 @@ const BUILDINGS = {
     pointFactor: 1.2,
     requirements: {}
   },
-  warehouse: {
-    name: "Warehouse",
-    baseCost: { wood: 60, clay: 50, stone: 40 },
-    costMultiplier: 1.4,
-    timeMultiplier: 1.2,
-    growthFactor: 1.25,
-    baseBuildTime: 80,
-    basePop: 2,
-    popMultiplier: 1.1,
-    storageBase: 1000,
-    maxLevel: 30,
-    pointValue: 4,
-    pointFactor: 1.2,
-    requirements: {}
-  },
-  farm: {
-    name: "Farm",
-    baseCost: { wood: 45, clay: 40, stone: 30 },
-    costMultiplier: 1.4,
-    timeMultiplier: 1.15,
-    growthFactor: 1.13, // ⚔️ Capacity growth
-    baseBuildTime: 60,
-    populationBase: 50, // ⚔️ Capacity at Level 1
-    maxLevel: 30,
-    pointValue: 3,
-    pointFactor: 1.2,
-    requirements: {}
-  },
 
   // --- RESOURCE PRODUCTION ---
   woodFarm: {
@@ -49,7 +21,7 @@ const BUILDINGS = {
     baseCost: { wood: 50, clay: 40, stone: 30 },
     costMultiplier: 1.18,
     timeMultiplier: 1.15,
-    growthFactor: 1.15,
+    growthFactor: 1.16,
     baseBuildTime: 60,
     basePop: 4,
     popMultiplier: 1.15,
@@ -64,7 +36,7 @@ const BUILDINGS = {
     baseCost: { wood: 40, clay: 50, stone: 30 },
     costMultiplier: 1.18,
     timeMultiplier: 1.15,
-    growthFactor: 1.15,
+    growthFactor: 1.16,
     baseBuildTime: 60,
     basePop: 4,
     popMultiplier: 1.15,
@@ -79,7 +51,7 @@ const BUILDINGS = {
     baseCost: { wood: 40, clay: 30, stone: 50 },
     costMultiplier: 1.18,
     timeMultiplier: 1.15,
-    growthFactor: 1.15,
+    growthFactor: 1.16,
     baseBuildTime: 60,
     basePop: 4,
     popMultiplier: 1.15,
@@ -97,7 +69,7 @@ const BUILDINGS = {
     costMultiplier: 1.7,
     timeMultiplier: 1.25,
     growthFactor: 0.02,
-    baseBuildTime: 300,
+    baseBuildTime: 100,
     basePop: 7,
     popMultiplier: 1.2,
     maxLevel: 25,
@@ -119,21 +91,6 @@ const BUILDINGS = {
     pointFactor: 1.2,
     requirements: { greatHall: 10, barracks: 5 }
   },
-  wall: {
-    name: "Wall",
-    baseCost: { wood: 50, clay: 100, stone: 200 },
-    costMultiplier: 2.1,
-    timeMultiplier: 1.3,
-    growthFactor: 1.05,
-    baseBuildTime: 400,
-    basePop: 0, // ⚔️ Walls require no permanent housing
-    popMultiplier: 1,
-    defenseBonusBase: 0.05,
-    maxLevel: 20,
-    pointValue: 5,
-    pointFactor: 1.2,
-    requirements: { greatHall: 3 }
-  },
 
   // --- UTILITY ---
   market: {
@@ -150,7 +107,52 @@ const BUILDINGS = {
     pointValue: 6,
     pointFactor: 1.2,
     requirements: { greatHall: 5 }
-  }
+  },
+
+  warehouse: {
+    name: "Warehouse",
+    baseCost: { wood: 60, clay: 50, stone: 40 },
+    costMultiplier: 1.4,
+    timeMultiplier: 1.2,
+    growthFactor: 1.25,
+    baseBuildTime: 80,
+    basePop: 2,
+    popMultiplier: 1.1,
+    storageBase: 1000,
+    maxLevel: 30,
+    pointValue: 4,
+    pointFactor: 1.2,
+    requirements: {}
+  },
+  farm: {
+    name: "Farm",
+    baseCost: { wood: 45, clay: 40, stone: 30 },
+    costMultiplier: 1.3,
+    timeMultiplier: 1.15,
+    growthFactor: 1.13, // ⚔️ Capacity growth
+    baseBuildTime: 60,
+    populationBase: 50, // ⚔️ Capacity at Level 1
+    maxLevel: 30,
+    pointValue: 3,
+    pointFactor: 1.2,
+    requirements: {}
+  },
+
+  wall: {
+    name: "Wall",
+    baseCost: { wood: 50, clay: 100, stone: 200 },
+    costMultiplier: 2.1,
+    timeMultiplier: 1.3,
+    growthFactor: 1.05,
+    baseBuildTime: 400,
+    basePop: 0, // ⚔️ Walls require no permanent housing
+    popMultiplier: 1,
+    defenseBonusBase: 0.05,
+    maxLevel: 20,
+    pointValue: 5,
+    pointFactor: 1.2,
+    requirements: { greatHall: 3 }
+  },
 };
 
 module.exports = BUILDINGS;
