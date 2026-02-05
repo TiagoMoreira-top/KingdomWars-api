@@ -8,6 +8,7 @@ const WorldSchema = new mongoose.Schema({
   maxPlayers: { type: Number, default: 1000 },
   players: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   worldUrl: { type: String, required: true },
+  dbName: { type: String, required: true },
   createdAt: { type: Date, default: Date.now }
 });
 

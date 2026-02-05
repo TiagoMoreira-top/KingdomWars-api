@@ -5,6 +5,7 @@ const cors = require('cors');
 require('dotenv').config();
 const authRoutes = require('./Routes/Auth');
 const worldRoutes = require('./Routes/WorldRoutes');
+const villageRoutes = require('./Routes/VillageRoutes');
 
 const app = express();
 
@@ -20,23 +21,9 @@ mongoose.connect(process.env.MONGO_MASTER_URI)
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error('Connection error:', err));
 
-// 2. WORLD CONNECTIONS: Store them in an object for reuse
-const worldConnections = {};
-
-async function getWorldDB(dbName) {
-    if (worldConnections[dbName]) return worldConnections[dbName];
-
-    const conn = await mongoose.createConnection(
-        `${process.env.MONGO_URI}/${dbName}`
-    ).asPromise();
-    
-    worldConnections[dbName] = conn;
-    console.log(`Connected to World: ${dbName}`);
-    return conn;
-}
-
 app.use('/api/auth', authRoutes);
 app.use('/worlds', worldRoutes);
+app.use('/villages', villageRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

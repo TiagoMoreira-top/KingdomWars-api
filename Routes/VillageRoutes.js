@@ -1,38 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const VillageController = require('../Controllers/VillageController');
-const Village = require('../Models/Village');
 
+const worldGate = require('../middleware/worldGate');
+const { protect } = require('../middleware/authMiddleware');
 
-router.get('/world', VillageController.getWorldMap);
-
-router.post('/recruit', VillageController.recruitTroops);
-
-// This results in: GET /api/village/player/:playerId
-router.get('/player/:playerId', VillageController.getVillageByPlayer);
-
-router.get('/my-main', VillageController.getMyMainVillage); 
-
-// Existing routes
-router.get('/:id', VillageController.getVillageById);
-router.post('/upgrade', VillageController.startUpgrade);
-
-router.get('/admin/fix-database', async (req, res) => {
-    try {
-        const result = await Village.updateMany(
-            { "buildings.warehouse": { $exists: false } }, 
-            { $set: { 
-                "buildings.warehouse": 1, 
-                "lastResourceUpdate": new Date(),
-                "resources.wood": 500,
-                "resources.clay": 500,
-                "resources.iron": 500
-            } }
-        );
-        res.send(`Successfully updated ${result.modifiedCount} villages.`);
-    } catch (err) {
-        res.status(500).send(err.message);
-    }
-});
+router.get('/config', VillageController.getConfig);
+router.get('/:worldId/village/:villageId', protect, worldGate, VillageController.getVillageData);
+router.post('/:worldId/village/:villageId/upgrade-building', protect, worldGate, VillageController.upgradeBuilding);
+router.post('/:worldId/village/:villageId/cancel-upgrade', protect, worldGate, VillageController.cancelUpgrade);
+router.post('/:worldId/village/:villageId/recruit', protect, worldGate, VillageController.recruitUnits);
+router.post('/:worldId/village/:villageId/cancel-recruitment', protect, worldGate, VillageController.cancelRecruitment);
+router.get('/:worldId/my-villages', protect, worldGate, VillageController.getMyVillages);
 
 module.exports = router;

@@ -14,6 +14,7 @@ const createWorld = async () => {
       maxPlayers: 1000,
       worldUrl: "http://localhost:5000",
       players: [],
+      dbName: "world_1",
     };
 
     const existingWorld = await World.findOne({ name: initialWorld.name });

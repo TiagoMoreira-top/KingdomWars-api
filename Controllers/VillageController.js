@@ -2,453 +2,394 @@ const Village = require('../Models/Village');
 const { calculateResources } = require('../utils/functions');
 const Construction = require('../Models/Construction');
 const Report = require('../Models/Report');
+const VillageService = require('../services/VillageService');
+const World = require('../Models/World');
 
-exports.getVillageData = async (req, res) => {
-    try {
-        let village = await Village.findById(req.params.id);
-        if (!village) return res.status(404).json({ error: "Village not found" });
+const BUILDINGS = require('../config/buildings');
+const UNITS = require('../config/units');
 
-        // Sync all time-based mechanics
-        village = await calculateOfflineResources(village);
-        village = await syncUpgradeQueue(village); 
-        village = await syncTrainingQueue(village);
-
-        res.json(village);
-    } catch (err) {
-        res.status(500).json({ error: "Failed to synchronize village data." });
-    }
-};
-
-exports.startUpgrade = async (req, res) => {
-    try {
-        const { villageId, buildingName } = req.body;
-        const village = await Village.findById(villageId);
-
-        if (!village) return res.status(404).json({ error: "Village not found" });
-
-        const currentLevel = village.buildings[buildingName] || 0;
-
-        const baseCosts = {
-            headquarters: { wood: 200, clay: 170, iron: 90 },
-            timberCamp: { wood: 50, clay: 50, iron: 40 },
-            clayPit: { wood: 65, clay: 40, iron: 40 },
-            ironMine: { wood: 75, clay: 65, iron: 70 },
-            barracks: { wood: 200, clay: 150, iron: 100 },
-            smithy: { wood: 220, clay: 180, iron: 240 }
-        };
-
-        const base = baseCosts[buildingName];
-        const factor = Math.pow(1.5, currentLevel);
-        
-        const woodRequired = Math.floor(base.wood * factor);
-        const clayRequired = Math.floor(base.clay * factor);
-        const ironRequired = Math.floor(base.iron * factor);
-
-        if (village.resources.wood < woodRequired || 
-            village.resources.clay < clayRequired || 
-            village.resources.iron < ironRequired) {
-            return res.status(400).json({ 
-                error: `Insufficient resources! Need 🪵${woodRequired}, 🧱${clayRequired}, ⛓️${ironRequired}` 
-            });
-        }
-
-        if (buildingName === 'barracks' && village.buildings.headquarters < 3) {
-            return res.status(400).json({ error: "Headquarters level 3 required." });
-        }
-        if (buildingName === 'smithy' && (village.buildings.headquarters < 5 || village.buildings.barracks < 1)) {
-            return res.status(400).json({ error: "HQ Lvl 5 and Barracks Lvl 1 required." });
-        }
-        
-        if (buildingName === 'academy') {
-            if (village.buildings.headquarters < 20 || village.buildings.smithy < 20) {
-                return res.status(400).json({ error: "Your architects require a more advanced HQ and Smithy." });
-            }
-        }
-
-        village.resources.wood -= woodRequired;
-        village.resources.clay -= clayRequired;
-        village.resources.iron -= ironRequired;
-
-        const buildTime = 60000 * (currentLevel + 1); 
-
-        if (!village.upgradeQueue) {
-            village.upgradeQueue = [];
-        }
-
-        village.upgradeQueue.push({
-            building: buildingName,
-            finishTime: Date.now() + buildTime
-        });
-
-        await village.save();
-        res.json({ message: "Order confirmed, resources deducted.", finishTime: Date.now() + buildTime });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
-
-const syncUpgradeQueue = async (village) => {
-    const now = Date.now();
-    let updated = false;
-
-    const remainingQueue = village.upgradeQueue.filter(item => {
-        if (item.finishTime <= now + 500) {
-            // Use the bracket notation to update the building
-            village.buildings[item.building] += 1;
-            updated = true;
-            return false;
-        }
-        return true;
+exports.getConfig = async (req, res) => {
+  res.status(200).json({
+      success: true,
+      buildings: BUILDINGS,
+      units: UNITS,
     });
-
-    if (updated) {
-        village.upgradeQueue = remainingQueue;
-        
-        // CRITICAL: Tell Mongoose 'buildings' changed
-        village.markModified('buildings');
-        // Tell Mongoose 'upgradeQueue' changed
-        village.markModified('upgradeQueue');
-        
-        await village.save();
-    }
-
-    return village;
 };
 
 exports.getVillageData = async (req, res) => {
-    try {
-        let village = await Village.findById(req.params.id);
-        if (!village) return res.status(404).json({ error: "Village not found" });
+  try {
+    const { worldId, villageId } = req.params;
+    const world = req.world;
 
-        // First, calculate resources
-        village = calculateOfflineResources(village);
-        
-        // Second, sync the upgrade queue
-        village = await syncUpgradeQueue(village);
+    // This service function will calculate resources and check queues
+    const village = await VillageService.getUpdatedVillage(villageId, world);
 
-        res.json(village);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    res.status(200).json({
+      success: true,
+      village: village,
+      serverTime: Date.now()
+    });
+  } catch (error) {
+    res.status(500).json({ error: "⚔️ TAVERN RUMOR: Could not fetch village data." });
+  }
 };
 
-exports.getWorldMap = async (req, res) => {
-    try {
-        // Find EVERY village in the database
-        // We only select the fields needed for the map to keep it fast
-        const villages = await Village.find({}, 'name ownerId x y buildings');
-        
-        res.json(villages);
-    } catch (err) {
-        res.status(500).json({ error: "The map scrolls are unreadable." });
-    }
+exports.getMyVillages = async (req, res) => {
+  try {
+    const playerId = req.worldPlayer._id;
+
+    // We find all villages where the player is the master
+    const villages = await req.getVillageModel().find({ 
+      ownerId: playerId
+    })
+    .select('_id name x y') 
+    .sort({ createdAt: 1 });
+
+    res.status(200).json({
+      success: true,
+      villages: villages
+    });
+  } catch (error) {
+    res.status(500).json({ error: "⚔️ THE CENSUS FAILED: Thy holdings are obscured." });
+  }
 };
 
-exports.recruitTroops = async (req, res) => {
-    try {
-        const { villageId, unitType, amount } = req.body;
-        const village = await Village.findById(villageId);
+exports.upgradeBuilding = async (req, res) => {
+  try {
+    const { villageId } = req.params;
+    const { buildingKey } = req.body;
+    const villageModel = req.getVillageModel();
 
-        if (!village) return res.status(404).json({ error: "Village not found" });
+    const bConfig = BUILDINGS[buildingKey];
+    if (!bConfig) {
+      return res.status(400).json({ error: "📜 UNKNOWN: This structure is not in the royal blueprints." });
+    }
 
-        // Research requirements
-        if (unitType === 'swordsman' && village.research.swordsmanLevel === 0) {
-            return res.status(400).json({ error: "Research Iron Casting in Smithy first." });
-        }
-        if (unitType === 'archer' && village.research.archerLevel === 0) {
-            return res.status(400).json({ error: "Research Composite Bows in Smithy first." });
-        }
+    const village = await VillageService.getUpdatedVillage(villageId, req.world);
+    if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
 
-        const unitConfigs = {
-            spearman: { wood: 50, clay: 30, iron: 10, time: 15 },
-            swordsman: { wood: 30, clay: 50, iron: 70, time: 30 },
-            archer: { wood: 60, clay: 40, iron: 20, time: 20 }
-        };
+    const queue = village.upgradeQueue || [];
 
-        const config = unitConfigs[unitType];
-        const totalWood = config.wood * amount;
-        const totalClay = config.clay * amount;
-        const totalIron = config.iron * amount;
+    if (queue.length >= 3) {
+      return res.status(403).json({ 
+        error: "🔨 OVERWORKED: Thy masons are already handling 3 projects." 
+      });
+    }
+    
+    // ⚔️ LEVEL CALCULATIONS
+    const queuedLevels = queue
+      .filter(q => q.building === buildingKey)
+      .map(q => q.targetLevel);
+    
+    const maxQueuedLevel = queuedLevels.length > 0 ? Math.max(...queuedLevels) : null;
+    const currentLvl = (village.buildings && village.buildings[buildingKey]) || 0;
+    const nextTargetLevel = maxQueuedLevel ? maxQueuedLevel + 1 : currentLvl + 1;
 
-        if (village.resources.wood < totalWood || village.resources.clay < totalClay || village.resources.iron < totalIron) {
-            return res.status(400).json({ error: "Insufficient resources." });
-        }
+    if (nextTargetLevel > (bConfig.maxLevel || 30)) {
+      return res.status(400).json({ error: "🏛️ PINNACLE: This structure cannot be improved further." });
+    }
 
-        // Deduct resources
-        village.resources.wood -= totalWood;
-        village.resources.clay -= totalClay;
-        village.resources.iron -= totalIron;
+    // 👨‍🌾 POPULATION CHECK
+    // Calculate how much labor this specific level-up requires
+    if (bConfig.basePop) {
+      const popNeededForNextLevel = Math.floor(
+        bConfig.basePop * Math.pow(bConfig.popMultiplier, nextTargetLevel - 1)
+      );
+      
+      const availablePop = village.population.habitants - village.population.used;
 
-        // Calculate stacked training time
-        const trainingDuration = config.time * 1000 * amount;
-        let startTime = Date.now();
-        
-        if (village.trainingQueue && village.trainingQueue.length > 0) {
-            startTime = village.trainingQueue[village.trainingQueue.length - 1].finishTime;
-        }
-        
-        const finishTime = startTime + trainingDuration;
-
-        // Add to queue (DO NOT update village.army here)
-        if (!village.trainingQueue) village.trainingQueue = [];
-        village.trainingQueue.push({
-            unitType,
-            amount,
-            finishTime
+      if (availablePop < popNeededForNextLevel) {
+        return res.status(403).json({ 
+          error: `👨‍🌾 OVERCROWDED: Need ${popNeededForNextLevel} free citizens, but only ${availablePop} are idle. Expand thy Farm!` 
         });
-
-        await village.save();
-        res.json({ message: "Training started.", trainingQueue: village.trainingQueue });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+      }
     }
-};
 
-const syncTrainingQueue = async (village) => {
-    const now = Date.now();
-    if (!village.trainingQueue || village.trainingQueue.length === 0) return village;
-
-    const finished = village.trainingQueue.filter(job => job.finishTime <= now);
-    
-    if (finished.length > 0) {
-        if (!village.army) village.army = { spearman: 0, swordsman: 0, archer: 0 };
-
-        finished.forEach(job => {
-            village.army[job.unitType] = (village.army[job.unitType] || 0) + job.amount;
-        });
-
-        // Remove finished jobs from the queue
-        village.trainingQueue = village.trainingQueue.filter(job => job.finishTime > now);
-        
-        village.markModified('army');
-        village.markModified('trainingQueue');
-        await village.save();
+    // 🛡️ REQUIREMENT CHECKING
+    const requirements = bConfig.requirements || {};
+    for (const [reqB, reqL] of Object.entries(requirements)) {
+      if ((village.buildings[reqB] || 0) < reqL) {
+        return res.status(403).json({ error: `📜 Foundations missing: ${reqB} (Lv. ${reqL})` });
+      }
     }
-    return village;
-};
 
-exports.startResearch = async (req, res) => {
-    try {
-        const { villageId, techName } = req.body;
-        const village = await Village.findById(villageId);
+    // 💰 COST CALCULATIONS
+    const costMultiplierLevel = nextTargetLevel - 1;
+    const woodCost = Math.floor(bConfig.baseCost.wood * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
+    const clayCost = Math.floor(bConfig.baseCost.clay * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
+    const stoneCost = Math.floor(bConfig.baseCost.stone * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
 
-        const costs = {
-            swordsman: { wood: 500, clay: 500, iron: 600 },
-            archer: { wood: 700, clay: 400, iron: 300 }
-        };
+    if (village.resources.wood < woodCost || village.resources.clay < clayCost || village.resources.stone < stoneCost) {
+      return res.status(402).json({ error: "💰 EMPTY VAULTS: Thy coffers lack the gold for such ambition." });
+    }
 
-        const cost = costs[techName];
-        if (village.resources.wood < cost.wood || village.resources.iron < cost.iron) {
-            return res.status(400).json({ error: "Not enough resources for research." });
+    // ⏳ PARALLEL TIME
+    const buildTimeSeconds = Math.floor(bConfig.baseBuildTime * Math.pow(bConfig.timeMultiplier, costMultiplierLevel));
+    const finishTime = Date.now() + (buildTimeSeconds * 1000);
+
+    // 🏗️ DB UPDATE
+    const updateResult = await villageModel.updateOne(
+      { _id: villageId },
+      { 
+        $inc: { 
+          "resources.wood": -woodCost, 
+          "resources.clay": -clayCost, 
+          "resources.stone": -stoneCost,
+          "population.used": bConfig.basePop ? Math.floor(bConfig.basePop * Math.pow(bConfig.popMultiplier, nextTargetLevel - 1)) : 0
+        },
+        $push: {
+          upgradeQueue: {
+            building: buildingKey,
+            targetLevel: nextTargetLevel,
+            finishTime: finishTime
+          }
         }
+      }
+    );
 
-        village.resources.wood -= cost.wood;
-        village.resources.iron -= cost.iron;
-        village.research[`${techName}Level`] += 1;
-
-        await village.save();
-        res.json({ message: "Research complete!" });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    if (updateResult.modifiedCount === 0) {
+      throw new Error("Update failed: Village not modified.");
     }
-};
 
-const calculateCapacity = (level) => {
-    return Math.floor(1000 * Math.pow(1.6, level));
-};
-
-const calculateOfflineResources = (village) => {
-    // 1. Ensure buildings exist to prevent NaN in math
-    const warehouseLvl = village.buildings?.warehouse || 1;
-    const timberLvl = village.buildings?.timberCamp || 1;
-    const clayLvl = village.buildings?.clayPit || 1;
-    const ironLvl = village.buildings?.ironMine || 1;
-
-    const now = new Date();
-    // 2. If lastResourceUpdate is missing, use NOW so math doesn't break
-    const lastUpdate = village.lastResourceUpdate ? new Date(village.lastResourceUpdate) : now;
-    
-    const secondsPassed = Math.floor((now - lastUpdate) / 1000);
-    const capacity = Math.floor(1000 * Math.pow(1.6, warehouseLvl));
-
-    if (secondsPassed > 0) {
-        const woodRate = ((timberLvl * 20) + 2) / 3600;
-        const clayRate = ((clayLvl * 20) + 2) / 3600;
-        const ironRate = ((ironLvl * 15) + 1) / 3600;
-
-        // 3. Ensure resources aren't null/undefined before adding
-        village.resources.wood = Math.min(capacity, (village.resources.wood || 0) + woodRate * secondsPassed);
-        village.resources.clay = Math.min(capacity, (village.resources.clay || 0) + clayRate * secondsPassed);
-        village.resources.iron = Math.min(capacity, (village.resources.iron || 0) + ironRate * secondsPassed);
-        
-        village.lastResourceUpdate = now;
-    }
-    return village;
-};
-
-exports.getVillageByPlayer = async (req, res) => {
-    try {
-        let village = await Village.findOne({ ownerId: req.params.playerId });
-        if (!village) return res.status(404).json({ error: "Village not found" });
-
-        // 1. Calculate resource production
-        village = await calculateOfflineResources(village);
-        
-        // 2. Process finished buildings
-        village = await syncUpgradeQueue(village); 
-
-        // 3. ADD THIS: Process finished troops
-        village = await syncTrainingQueue(village); 
-
-        village = await syncMovements(village); 
-
-        res.json(village);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
-
-exports.getVillageById = async (req, res) => {
-    try {
-        // Use findById for the specific hex ID from the URL
-        let village = await Village.findById(req.params.id);
-        
-        if (village) {
-            // Run our resource catch-up logic we built earlier
-            village = calculateOfflineResources(village);
-            await village.save();
-            res.json(village);
-        } else {
-            res.status(404).json({ error: "Village not found" });
-        }
-    } catch (err) {
-        res.status(500).json({ error: "Invalid Village ID format" });
-    }
-};
-
-exports.getMyMainVillage = async (req, res) => {
-    try {
-        // 1. Check if cookies are actually reaching the server
-        const playerId = req.cookies?.session;
-
-        if (!playerId) {
-            console.log("❌ No session cookie found in request");
-            return res.status(401).json({ error: "No session found" });
-        }
-
-        // 2. Find the village
-        const village = await Village.findOne({ ownerId: playerId });
-        
-        if (!village) {
-            console.log(`❌ No village found for player: ${playerId}`);
-            return res.status(404).json({ error: "Village not found" });
-        }
-
-        // 3. TEMPORARY: Bypass the sync function to test the connection
-        // Once this works, we will fix the syncTrainingQueue import
-        console.log(`✅ Village found: ${village.name}. Sending to frontend...`);
-        res.json(village);
-
-    } catch (err) {
-        // This will print the EXACT error in your terminal
-        console.error("🔥 CRITICAL SERVER ERROR:", err.message);
-        res.status(500).json({ error: err.message });
-    }
-};
-
-exports.getLeaderboard = async (req, res) => {
-    try {
-        const villages = await Village.find({});
-        
-        // Group by owner and calculate points
-        const leaderboard = villages.reduce((acc, v) => {
-            const villagePoints = Object.values(v.buildings).reduce((sum, lvl) => sum + (lvl * 10), 0);
-            
-            if (!acc[v.ownerId]) {
-                acc[v.ownerId] = { ownerId: v.ownerId, points: 0, villages: 0 };
-            }
-            
-            acc[v.ownerId].points += villagePoints;
-            acc[v.ownerId].villages += 1;
-            return acc;
-        }, {});
-
-        // Convert to array and sort by points descending
-        const sorted = Object.values(leaderboard).sort((a, b) => b.points - a.points);
-        
-        res.json(sorted);
-    } catch (err) {
-        res.status(500).json({ error: "The scribes failed to tally the scores." });
-    }
-};
-
-exports.getAllVillages = async (req, res) => {
-    try {
-        // We only need the name, coords, and owner for the map
-        const villages = await Village.find({}, 'name x y ownerName');
-        res.json(villages);
-    } catch (err) {
-        res.status(500).json({ error: "Failed to load world map." });
-    }
-};
-
-const syncMovements = async (villageId) => {
-    const now = new Date();
-    
-    const arrivals = await Movement.find({ 
-        destinationId: villageId, 
-        arrivalTime: { $lte: now }, 
-        isCompleted: false 
+    res.status(200).json({
+      success: true,
+      message: `🏗️ STARTED: ${bConfig.name} Level ${nextTargetLevel} is underway!`,
+      finishTime
     });
 
-    for (const move of arrivals) {
-        const target = await Village.findById(move.destinationId);
-        const origin = await Village.findById(move.originId);
+  } catch (error) {
+    console.error("Village Update Error:", error);
+    res.status(500).json({ error: "⚡ OMEN: The heavens have struck the construction site." });
+  }
+};
 
-        if (!target || !origin) continue;
+exports.cancelUpgrade = async (req, res) => {
+  try {
+    const { villageId } = req.params;
+    const { jobId } = req.body;
+    const villageModel = req.getVillageModel();
 
-        // 1. Run the detailed battle engine
-        const { winner, reportData } = await runBattle(move, origin, target);
+    // ⚔️ 1. Fetch the document directly from the model to ensure we have the 'save' method
+    const village = await villageModel.findById(villageId);
+    if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
 
-        // 2. Apply Defender Casualties (Updated in runBattle, but we save here)
-        target.markModified('army');
-        target.markModified('resources');
-        await target.save();
-
-        // 3. Handle Attacker Loot & Survivors
-        // Note: For now, loot is instant. Later, you can create a 'return' movement.
-        if (winner === 'attacker') {
-            origin.resources.wood += reportData.loot.wood;
-            origin.resources.clay += reportData.loot.clay;
-            origin.resources.iron += reportData.loot.iron;
-            
-            // Return surviving units to origin village immediately
-            Object.keys(move.units).forEach(u => {
-                origin.army[u] += (move.units[u] - reportData.attackerUnits[u].lost);
-            });
-            
-            origin.markModified('army');
-            origin.markModified('resources');
-            await origin.save();
-        }
-
-        // 4. Generate the Report for the Inbox
-        const Report = require('../Models/Report');
-        const newReport = new Report({
-            attackerId: origin.ownerId,
-            defenderId: target.ownerId,
-            attackerName: origin.ownerName || "Attacker",
-            defenderName: target.ownerName || "Defender",
-            originName: origin.name,
-            targetName: target.name,
-            winner,
-            attackerUnits: reportData.attackerUnits,
-            defenderUnits: reportData.defenderUnits,
-            loot: reportData.loot
-        });
-
-        // 5. Finalize Movement
-        move.isCompleted = true;
-        await Promise.all([newReport.save(), move.save()]);
+    // ⚔️ 2. Locate the project to be struck from the record
+    const jobIndex = village.upgradeQueue.findIndex(job => job._id.toString() === jobId);
+    if (jobIndex === -1) {
+      return res.status(404).json({ error: "📜 VANISHED: That project is no longer in the queue." });
     }
+
+    const job = village.upgradeQueue[jobIndex];
+    const bConfig = BUILDINGS[job.building];
+    const cancelledLevel = job.targetLevel;
+
+    // 💰 3. CALCULATE REFUND
+    const costMultiplierLevel = cancelledLevel - 1;
+    const woodRefund = Math.floor(bConfig.baseCost.wood * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
+    const clayRefund = Math.floor(bConfig.baseCost.clay * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
+    const stoneRefund = Math.floor(bConfig.baseCost.stone * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
+    const popToRelease = bConfig.basePop 
+      ? Math.floor(bConfig.basePop * Math.pow(bConfig.popMultiplier, costMultiplierLevel)) 
+      : 0;
+
+    // 🔄 4. THE CHAIN REPAIR (The Shift)
+    // We remove the job and decrement targetLevel for any subsequent jobs of the same building type
+    village.upgradeQueue.splice(jobIndex, 1);
+
+    village.upgradeQueue.forEach(q => {
+      if (q.building === job.building && q.targetLevel > cancelledLevel) {
+        q.targetLevel -= 1;
+        
+        // ⏳ Optional: Adjust finish time here if you want Level 3 to finish faster now that it's Level 2
+      }
+    });
+
+    // 🏗️ 5. UPDATE COFFERS AND SAVE
+    village.resources.wood += woodRefund;
+    village.resources.clay += clayRefund;
+    village.resources.stone += stoneRefund;
+    village.population.used = Math.max(0, village.population.used - popToRelease);
+
+    // Use .save() to ensure Mongoose middleware and array tracking work correctly
+    await village.save();
+
+    res.status(200).json({
+      success: true,
+      message: `⚒️ RESTRUCTURED: ${bConfig.name} Level ${cancelledLevel} halted. The line of succession has been updated.`,
+      village
+    });
+
+  } catch (error) {
+    console.error("Cancel Upgrade Error:", error);
+    res.status(500).json({ error: "⚡ OMEN: The heavens forbid halting this work." });
+  }
+};
+
+exports.recruitUnits = async (req, res) => {
+  try {
+    const { villageId } = req.params;
+    const { unitKey, amount } = req.body;
+    const villageModel = req.getVillageModel();
+
+    const village = await villageModel.findById(villageId);
+    if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+
+    const uConfig = UNITS[unitKey];
+    if (!uConfig || amount <= 0) {
+      return res.status(400).json({ error: "📜 FOLLY: Thy recruitment orders are nonsensical." });
+    }
+
+    const requirementsMet = Object.entries(uConfig.requirements || {}).every(
+      ([reqB, reqL]) => (village.buildings[reqB] || 0) >= reqL
+    );
+
+    if (!requirementsMet) {
+      return res.status(403).json({ error: "🏗️ FORBIDDEN: Thy village lacks the required architecture for these warriors." });
+    }
+
+    const totalWood = uConfig.baseCost.wood * amount;
+    const totalClay = uConfig.baseCost.clay * amount;
+    const totalStone = uConfig.baseCost.stone * amount;
+    const totalPop = uConfig.population * amount;
+
+    const hasResources = 
+      village.resources.wood >= totalWood &&
+      village.resources.clay >= totalClay &&
+      village.resources.stone >= totalStone;
+
+    const freePop = village.population.habitants - village.population.used;
+    const hasPop = freePop >= totalPop;
+
+    if (!hasResources || !hasPop) {
+      return res.status(402).json({ error: "📉 DEPLETED: Thy coffers or thy housing cannot support such a battalion." });
+    }
+
+    const trainingBuilding = uConfig.requirements?.barracks ? 'barracks' : 'stable';
+    const buildingLevel = village.buildings[trainingBuilding] || 0;
+    const bConfig = BUILDINGS[trainingBuilding];
+    const growthFactor = bConfig?.growthFactor || 0.1; 
+    
+    const speedMultiplier = 1 + (buildingLevel * growthFactor);
+    const timePerUnit = uConfig.trainTime / speedMultiplier;
+    const totalDuration = timePerUnit * amount;
+
+    // 🔄 4. QUEUE SEQUENCING (The Chain of Command)
+    const now = new Date();
+    let startTime;
+
+    if (village.trainingQueue && village.trainingQueue.length > 0) {
+      // Find the last job in the existing queue
+      const lastJob = village.trainingQueue[village.trainingQueue.length - 1];
+      const lastFinish = new Date(lastJob.finishTime);
+
+      // If the last finish time is in the past, the building was idle.
+      // We start from NOW. Otherwise, we start exactly when the last one finishes.
+      startTime = lastFinish < now ? now : lastFinish;
+    } else {
+      // The grounds are empty; start immediately.
+      startTime = now;
+    }
+
+    const finishTime = new Date(startTime.getTime() + totalDuration * 1000);
+
+    village.resources.wood -= totalWood;
+    village.resources.clay -= totalClay;
+    village.resources.stone -= totalStone;
+    village.population.used += totalPop;
+
+    village.trainingQueue.push({
+      unitKey,
+      amount,
+      startTime,
+      finishTime,
+      totalDuration
+    });
+
+    await village.save();
+
+    res.status(200).json({
+      success: true,
+      message: `⚔️ MUSTERED: ${amount} ${uConfig.name} have been added to the training grounds.`,
+      village
+    });
+
+  } catch (error) {
+    console.error("Recruitment Error:", error);
+    res.status(500).json({ error: "⚡ OMEN: The forge fires have died unexpectedly." });
+  }
+};
+
+exports.cancelRecruitment = async (req, res) => {
+  try {
+    const { villageId } = req.params;
+    const { jobId } = req.body;
+    const villageModel = req.getVillageModel();
+
+    const village = await villageModel.findById(villageId);
+    if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+
+    const jobIndex = village.trainingQueue.findIndex(j => j._id.toString() === jobId);
+    if (jobIndex === -1) {
+      return res.status(404).json({ error: "📜 VANISHED: This order is no longer in the scrolls." });
+    }
+
+    const job = village.trainingQueue[jobIndex];
+    const uConfig = UNITS[job.unitKey];
+
+    // 💰 1. THE REBATE
+    const refundFactor = 0.9; 
+    village.resources.wood += Math.floor((uConfig.baseCost.wood || 0) * job.amount * refundFactor);
+    village.resources.clay += Math.floor((uConfig.baseCost.clay || 0) * job.amount * refundFactor);
+    village.resources.stone += Math.floor((uConfig.baseCost.stone || 0) * job.amount * refundFactor);
+    village.population.used = Math.max(0, village.population.used - (uConfig.population * job.amount));
+
+    // ⚔️ 2. THE SURGERY
+    const wasFirst = jobIndex === 0;
+    village.trainingQueue.splice(jobIndex, 1);
+
+    // ⏳ 3. THE CHAIN REPAIR (With Speed Multipliers)
+    let runningTimestamp = Date.now();
+
+    village.trainingQueue.forEach((item, index) => {
+      const itemConfig = UNITS[item.unitKey];
+      
+      // Calculate speed based on building level
+      const trainingBuilding = itemConfig.requirements?.barracks ? 'barracks' : 'stable';
+      const buildingLevel = village.buildings[trainingBuilding] || 0;
+      const bConfig = BUILDINGS[trainingBuilding];
+      const growthFactor = bConfig?.growthFactor || 0.1; 
+      
+      const speedMultiplier = 1 + (buildingLevel * growthFactor);
+      const timePerUnit = itemConfig.trainTime / speedMultiplier;
+      const totalDurationMs = (timePerUnit * item.amount) * 1000;
+
+      if (index === 0 && !wasFirst) {
+        // If the first unit stayed at the front, do not reset its progress
+        runningTimestamp = Number(item.finishTime);
+      } else {
+        // Shift this unit and everyone behind it
+        const newStart = runningTimestamp;
+        const newFinish = newStart + totalDurationMs;
+        
+        item.startTime = newStart;
+        item.finishTime = newFinish;
+        
+        runningTimestamp = newFinish;
+      }
+    });
+
+    // 🛡️ 4. COMMIT TO THE CHRONICLES
+    village.markModified('trainingQueue');
+    await village.save();
+
+    res.status(200).json({
+      success: true,
+      message: "🕊️ DISSOLVED: The training grounds have been cleared and the line moves forward.",
+      village
+    });
+
+  } catch (error) {
+    console.error("Cancel Recruitment Error:", error);
+    res.status(500).json({ error: "⚡ OMEN: The heavens forbid halting this work." });
+  }
 };
