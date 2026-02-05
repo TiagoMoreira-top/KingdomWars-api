@@ -10,7 +10,10 @@ const villageRoutes = require('./Routes/VillageRoutes');
 const app = express();
 
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: [
+    'http://localhost:3000', 
+    'https://kingdom-wars.vercel.app/'
+  ],
   credentials: true // Required to allow cookies to pass through
 }));
 
