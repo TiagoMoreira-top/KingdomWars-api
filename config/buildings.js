@@ -11,7 +11,7 @@ const BUILDINGS = {
     popMultiplier: 1.15,
     maxLevel: 30,
     pointValue: 10,
-    pointFactor: 1.2,
+    pointFactor: 1.26,
     requirements: {}
   },
 
@@ -27,8 +27,8 @@ const BUILDINGS = {
     popMultiplier: 1.15,
     productionBase: 80,
     maxLevel: 30,
-    pointValue: 2,
-    pointFactor: 1.2,
+    pointValue: 8,
+    pointFactor: 1.21,
     requirements: {}
   },
 
@@ -44,15 +44,15 @@ const BUILDINGS = {
     popMultiplier: 1.15,
     productionBase: 80,
     maxLevel: 30,
-    pointValue: 2,
-    pointFactor: 1.2,
+    pointValue: 8,
+    pointFactor: 1.21,
     requirements: {}
   },
 
   stoneFarm: {
     name: "Stone Farm",
     description: "Masons extract massive blocks of granite from the earth's crust to reinforce your structures and raise impenetrable defenses.",
-    baseCost: { wood: 40, clay: 30, stone: 50 },
+    baseCost: { wood: 40, clay: 30, stone: 25 },
     costMultiplier: 1.18,
     timeMultiplier: 1.15,
     growthFactor: 1.16,
@@ -61,8 +61,8 @@ const BUILDINGS = {
     popMultiplier: 1.15,
     productionBase: 80,
     maxLevel: 30,
-    pointValue: 2,
-    pointFactor: 1.2,
+    pointValue: 8,
+    pointFactor: 1.21,
     requirements: {}
   },
 
@@ -78,14 +78,14 @@ const BUILDINGS = {
     popMultiplier: 1.2,
     maxLevel: 25,
     pointValue: 8,
-    pointFactor: 1.2,
+    pointFactor: 1.26,
     requirements: { greatHall: 3 }
   },
 
   stable: {
     name: "Stable",
     description: "A sanctuary for warhorses and riders. Upgrading the stables allows for the swift training of devastating cavalry units.",
-    baseCost: { wood: 600, clay: 500, stone: 400 },
+    baseCost: { wood: 300, clay: 350, stone: 150 },
     costMultiplier: 1.8,
     timeMultiplier: 1.3,
     growthFactor: 0.88,
@@ -94,14 +94,14 @@ const BUILDINGS = {
     popMultiplier: 1.25,
     maxLevel: 20,
     pointValue: 12,
-    pointFactor: 1.2,
+    pointFactor: 1.26,
     requirements: { greatHall: 10, barracks: 5 }
   },
 
   market: {
     name: "Market",
     description: "A bustling hub of trade where merchants barter goods. Leveling the market provides more merchants to facilitate resource exchange with allies.",
-    baseCost: { wood: 100, clay: 100, stone: 100 },
+    baseCost: { wood: 80, clay: 90, stone: 70 },
     costMultiplier: 1.5,
     timeMultiplier: 1.2,
     growthFactor: 1,
@@ -111,7 +111,7 @@ const BUILDINGS = {
     merchantsBase: 1,
     maxLevel: 25,
     pointValue: 6,
-    pointFactor: 1.2,
+    pointFactor: 1.1,
     requirements: { greatHall: 5 }
   },
 
@@ -119,7 +119,7 @@ const BUILDINGS = {
     name: "Warehouse",
     description: "A vast storage complex to protect your resources from the elements and raiding parties. Higher levels increase total resource capacity.",
     baseCost: { wood: 60, clay: 50, stone: 40 },
-    costMultiplier: 1.3,
+    costMultiplier: 1.26,
     timeMultiplier: 1.2,
     growthFactor: 1.25,
     baseBuildTime: 80,
@@ -128,7 +128,7 @@ const BUILDINGS = {
     storageBase: 1000,
     maxLevel: 30,
     pointValue: 4,
-    pointFactor: 1.2,
+    pointFactor: 1.1,
     requirements: {}
   },
 
@@ -143,7 +143,7 @@ const BUILDINGS = {
     populationBase: 60,
     maxLevel: 30,
     pointValue: 3,
-    pointFactor: 1.2,
+    pointFactor: 1.1,
     requirements: {}
   },
 
@@ -160,7 +160,7 @@ const BUILDINGS = {
     defenseBonusBase: 0.05,
     maxLevel: 20,
     pointValue: 5,
-    pointFactor: 1.2,
+    pointFactor: 1.1,
     requirements: { greatHall: 3 }
   },
 };
