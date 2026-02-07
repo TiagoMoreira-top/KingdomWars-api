@@ -34,7 +34,7 @@ const VillageSchema = new mongoose.Schema({
     stone: { type: Number, default: 500 },
     maxStorage: { type: Number, default: 1000 }
   },
-  
+
   production: {
     wood:  { type: Number, default: 0 },
     clay:  { type: Number, default: 0 },
@@ -54,7 +54,8 @@ const VillageSchema = new mongoose.Schema({
     woodFarm:    { type: Number, default: 1 },
     clayFarm:    { type: Number, default: 1 },
     stoneFarm:   { type: Number, default: 1 },
-    wall:        { type: Number, default: 0 }
+    wall:        { type: Number, default: 0 },
+    workshop:    { type: Number, default: 0 }
   },
 
   // --- THE POPULACE ---

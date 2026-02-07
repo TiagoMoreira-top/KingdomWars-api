@@ -98,6 +98,22 @@ const BUILDINGS = {
     requirements: { greatHall: 10, barracks: 5 }
   },
 
+  workshop: {
+    name: "Workshop",
+    description: "The birthplace of siege warfare. Here, master engineers construct devastating rams and catapults to shatter the gates of those who defy your rule.",
+    baseCost: { wood: 300, clay: 350, stone: 400 },
+    costMultiplier: 1.8,
+    timeMultiplier: 1.35, // Slightly slower build time than stables due to complex machinery
+    growthFactor: 0.9,
+    baseBuildTime: 720,   // 12 minutes base
+    basePop: 15,          // Requires a larger crew of specialized engineers
+    popMultiplier: 1.25,
+    maxLevel: 15,         // Siege workshops usually have fewer levels but higher impact
+    pointValue: 14,
+    pointFactor: 1.28,
+    requirements: { greatHall: 10, barracks: 10, stable: 5 } // Advanced military requirement
+  },
+
   market: {
     name: "Market",
     description: "A bustling hub of trade where merchants barter goods. Leveling the market provides more merchants to facilitate resource exchange with allies.",
