@@ -1,5 +1,4 @@
 const Village = require('../Models/Village');
-const { calculateResources } = require('../utils/functions');
 const Construction = require('../Models/Construction');
 const Report = require('../Models/Report');
 const VillageService = require('../services/VillageService');

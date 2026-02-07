@@ -41,4 +41,9 @@ const calculateResources = (village) => {
   };
 };
 
-module.exports = { syncVillageState, calculateResources };
+const calculateProduction = (base, multiplier, level) => {
+    if (level === 0) return 5; // Base survival production
+    return Math.floor(base * Math.pow(multiplier, level - 1));
+};
+
+module.exports = { syncVillageState, calculateResources, calculateProduction};

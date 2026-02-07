@@ -1,12 +1,17 @@
 const BUILDINGS = require('../config/buildings');
 const UNITS = require('../config/units');
 
+const { calculateProduction } = require('../utils/functions');
+
 const BuildingService = {
     processUpgrades(village, now) {
         const completedJobs = village.upgradeQueue.filter(job => job.finishTime <= now);
         if (completedJobs.length === 0) return village;
 
         let greatHallUpgraded = false;
+        // ⚔️ Track if we need to update our production stats
+        let productionChanged = false; 
+
         completedJobs.sort((a, b) => a.finishTime - b.finishTime);
 
         completedJobs.forEach(job => {
@@ -15,12 +20,32 @@ const BuildingService = {
 
             if (job.building === 'greatHall') greatHallUpgraded = true;
 
+            // ⚔️ Check if the completed building produces resources
+            if (['woodFarm', 'clayFarm', 'stoneFarm'].includes(job.building)) {
+                productionChanged = true;
+            }
+
             const bConfig = BUILDINGS[job.building];
             if (bConfig) {
                 village.points += (bConfig.pointValue || 2);
             }
             village.upgradeQueue.pull(job._id);
         });
+
+        // ⚔️ If production buildings were upgraded, recalculate the cached rates
+        if (productionChanged) {
+            ['wood', 'clay', 'stone'].forEach(type => {
+                const bKey = `${type}Farm`;
+                const level = village.buildings[bKey] || 0;
+                
+                village.production[type] = calculateProduction(
+                    BUILDINGS[bKey].productionBase,
+                    BUILDINGS[bKey].growthFactor,
+                    level
+                );
+            });
+            village.markModified('production');
+        }
 
         if (greatHallUpgraded && village.upgradeQueue.length > 0) {
             this.recalculateUpgradeQueueTimes(village, now);

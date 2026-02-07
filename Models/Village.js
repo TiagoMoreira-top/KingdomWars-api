@@ -34,6 +34,13 @@ const VillageSchema = new mongoose.Schema({
     stone: { type: Number, default: 500 },
     maxStorage: { type: Number, default: 1000 }
   },
+  
+  production: {
+    wood:  { type: Number, default: 0 },
+    clay:  { type: Number, default: 0 },
+    stone: { type: Number, default: 0 },
+  },
+
   lastResourceUpdate: { type: Date, default: Date.now },
 
   // --- THE INFRASTRUCTURE ---
