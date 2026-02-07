@@ -119,11 +119,23 @@ exports.upgradeBuilding = async (req, res) => {
 
     // ⏳ THE STACKING CHRONOLOGY
     // Work out when the current builders will be free
+    // ⏳ THE STACKING CHRONOLOGY
     const lastJobFinish = queue.length > 0 
       ? Math.max(...queue.map(q => new Date(q.finishTime).getTime()))
       : Date.now();
 
-    const buildTimeSeconds = Math.floor(bConfig.baseBuildTime * Math.pow(bConfig.timeMultiplier, costMultiplierLevel));
+    // 🏛️ GREAT HALL MASTERY
+    const ghConfig = BUILDINGS.greatHall;
+    const ghLvl = village.buildings.greatHall || 0;
+    
+    // speedFactor = 1 - (level * 0.03)
+    // We floor it at 0.1 so building never becomes "instant"
+    const speedFactor = Math.max(0.1, 1 - (ghLvl * (ghConfig.growthFactor || 0)));
+
+    const buildTimeSeconds = Math.max(1, Math.floor(
+      bConfig.baseBuildTime * Math.pow(bConfig.timeMultiplier, costMultiplierLevel) * speedFactor
+    ));
+
     const startTimestamp = lastJobFinish;
     const finishTimestamp = startTimestamp + (buildTimeSeconds * 1000);
 

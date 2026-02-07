@@ -1,4 +1,5 @@
 const BUILDINGS = require('../config/buildings');
+const UNITS = require('../config/units');
 
 const ResourceService = {
     calculateProduction(base, multiplier, level) {
@@ -30,6 +31,8 @@ const ResourceService = {
             BUILDINGS.warehouse.growthFactor,
             warehouseLvl
         );
+
+        updatedResources.maxStorage = capacity;
 
         // 🪵 Update Wood, Clay, Stone
         const types = ['wood', 'clay', 'stone'];

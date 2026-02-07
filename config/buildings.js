@@ -1,23 +1,23 @@
 const BUILDINGS = {
-  // --- CORE INFRASTRUCTURE ---
   greatHall: {
     name: "Great Hall",
+    description: "The heart of your domain. Upgrading this majestic hall increases the speed of all other construction projects within the village.",
     baseCost: { wood: 90, clay: 80, stone: 70 },
     costMultiplier: 1.25,
     timeMultiplier: 1.2,
-    growthFactor: 0.95,
+    growthFactor: 0.03,
     baseBuildTime: 120,
-    basePop: 5,           // ⚔️ Workers at Level 1
-    popMultiplier: 1.15,  // ⚔️ Labor demand scaling
+    basePop: 5,
+    popMultiplier: 1.15,
     maxLevel: 30,
     pointValue: 10,
     pointFactor: 1.2,
     requirements: {}
   },
 
-  // --- RESOURCE PRODUCTION ---
   woodFarm: {
     name: "Wood Farm",
+    description: "Deep within the ancient groves, hardy woodsmen fell timber to fuel your kingdom's expansion and provide essential building materials.",
     baseCost: { wood: 50, clay: 40, stone: 30 },
     costMultiplier: 1.18,
     timeMultiplier: 1.15,
@@ -25,14 +25,16 @@ const BUILDINGS = {
     baseBuildTime: 60,
     basePop: 4,
     popMultiplier: 1.15,
-    productionBase: 50,
+    productionBase: 80,
     maxLevel: 30,
     pointValue: 2,
     pointFactor: 1.2,
     requirements: {}
   },
+
   clayFarm: {
     name: "Clay Farm",
+    description: "Laborers toil in the riverbanks to harvest rich clay, vital for crafting the sturdy bricks and pottery required by your growing populace.",
     baseCost: { wood: 40, clay: 50, stone: 30 },
     costMultiplier: 1.18,
     timeMultiplier: 1.15,
@@ -40,14 +42,16 @@ const BUILDINGS = {
     baseBuildTime: 60,
     basePop: 4,
     popMultiplier: 1.15,
-    productionBase: 50,
+    productionBase: 80,
     maxLevel: 30,
     pointValue: 2,
     pointFactor: 1.2,
     requirements: {}
   },
+
   stoneFarm: {
     name: "Stone Farm",
+    description: "Masons extract massive blocks of granite from the earth's crust to reinforce your structures and raise impenetrable defenses.",
     baseCost: { wood: 40, clay: 30, stone: 50 },
     costMultiplier: 1.18,
     timeMultiplier: 1.15,
@@ -55,16 +59,16 @@ const BUILDINGS = {
     baseBuildTime: 60,
     basePop: 4,
     popMultiplier: 1.15,
-    productionBase: 50,
+    productionBase: 80,
     maxLevel: 30,
     pointValue: 2,
     pointFactor: 1.2,
     requirements: {}
   },
 
-  // --- MILITARY & DEFENSE ---
   barracks: {
     name: "Barracks",
+    description: "The primary training ground for your infantry. Here, peasants are forged into disciplined soldiers ready to die for your honor.",
     baseCost: { wood: 200, clay: 170, stone: 90 },
     costMultiplier: 1.7,
     timeMultiplier: 1.25,
@@ -77,8 +81,10 @@ const BUILDINGS = {
     pointFactor: 1.2,
     requirements: { greatHall: 3 }
   },
+
   stable: {
     name: "Stable",
+    description: "A sanctuary for warhorses and riders. Upgrading the stables allows for the swift training of devastating cavalry units.",
     baseCost: { wood: 600, clay: 500, stone: 400 },
     costMultiplier: 1.8,
     timeMultiplier: 1.3,
@@ -92,9 +98,9 @@ const BUILDINGS = {
     requirements: { greatHall: 10, barracks: 5 }
   },
 
-  // --- UTILITY ---
   market: {
     name: "Market",
+    description: "A bustling hub of trade where merchants barter goods. Leveling the market provides more merchants to facilitate resource exchange with allies.",
     baseCost: { wood: 100, clay: 100, stone: 100 },
     costMultiplier: 1.5,
     timeMultiplier: 1.2,
@@ -111,8 +117,9 @@ const BUILDINGS = {
 
   warehouse: {
     name: "Warehouse",
+    description: "A vast storage complex to protect your resources from the elements and raiding parties. Higher levels increase total resource capacity.",
     baseCost: { wood: 60, clay: 50, stone: 40 },
-    costMultiplier: 1.4,
+    costMultiplier: 1.3,
     timeMultiplier: 1.2,
     growthFactor: 1.25,
     baseBuildTime: 80,
@@ -124,14 +131,16 @@ const BUILDINGS = {
     pointFactor: 1.2,
     requirements: {}
   },
+
   farm: {
     name: "Farm",
+    description: "Providing the grain and livestock necessary to sustain your village. The larger the farm, the greater the population your village can support.",
     baseCost: { wood: 45, clay: 40, stone: 30 },
     costMultiplier: 1.3,
     timeMultiplier: 1.15,
-    growthFactor: 1.13, // ⚔️ Capacity growth
+    growthFactor: 1.23,
     baseBuildTime: 60,
-    populationBase: 50, // ⚔️ Capacity at Level 1
+    populationBase: 60,
     maxLevel: 30,
     pointValue: 3,
     pointFactor: 1.2,
@@ -140,12 +149,13 @@ const BUILDINGS = {
 
   wall: {
     name: "Wall",
+    description: "A ring of stone and timber that shields your people. The wall significantly boosts the defensive capabilities of your stationed troops.",
     baseCost: { wood: 50, clay: 100, stone: 200 },
     costMultiplier: 2.1,
     timeMultiplier: 1.3,
     growthFactor: 1.05,
     baseBuildTime: 400,
-    basePop: 0, // ⚔️ Walls require no permanent housing
+    basePop: 0,
     popMultiplier: 1,
     defenseBonusBase: 0.05,
     maxLevel: 20,
