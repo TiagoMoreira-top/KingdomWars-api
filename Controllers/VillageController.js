@@ -37,15 +37,25 @@ exports.getMyVillages = async (req, res) => {
   try {
     const playerId = req.worldPlayer._id;
 
-    // We find all villages where the player is the master
     const villages = await req.getVillageModel().find({ 
       ownerId: playerId
     })
-    .select('_id name x y') 
+    .select('_id name x y points') 
     .sort({ createdAt: 1 });
+
+    const totalPoints = villages.reduce((sum, village) => {
+      return sum + (village.points || 0);
+    }, 0);
+
+    // Sync the total points to the Player model for leaderboards
+    await req.getWorldPlayerModel().findByIdAndUpdate(playerId, {
+      points: totalPoints,
+      villagesCount: villages.length
+    });
 
     res.status(200).json({
       success: true,
+      totalPoints: totalPoints,
       villages: villages
     });
   } catch (error) {
