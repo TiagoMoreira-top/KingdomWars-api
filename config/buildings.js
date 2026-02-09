@@ -21,7 +21,7 @@ const BUILDINGS = {
     baseCost: { wood: 50, clay: 40, stone: 30 },
     costMultiplier: 1.18,
     timeMultiplier: 1.31,
-    growthFactor: 1.16,
+    growthFactor: 1.15,
     baseBuildTime: 60,
     basePop: 4,
     popMultiplier: 1.17,
@@ -38,7 +38,7 @@ const BUILDINGS = {
     baseCost: { wood: 40, clay: 50, stone: 30 },
     costMultiplier: 1.18,
     timeMultiplier: 1.31,
-    growthFactor: 1.16,
+    growthFactor: 1.15,
     baseBuildTime: 60,
     basePop: 4,
     popMultiplier: 1.17,
@@ -55,7 +55,7 @@ const BUILDINGS = {
     baseCost: { wood: 40, clay: 30, stone: 25 },
     costMultiplier: 1.18,
     timeMultiplier: 1.31,
-    growthFactor: 1.16,
+    growthFactor: 1.15,
     baseBuildTime: 60,
     basePop: 4,
     popMultiplier: 1.17,
@@ -131,6 +131,21 @@ const BUILDINGS = {
     requirements: { greatHall: 5 }
   },
 
+  farm: {
+    name: "Farm",
+    description: "Providing the grain and livestock necessary to sustain your village. The larger the farm, the greater the population your village can support.",
+    baseCost: { wood: 45, clay: 40, stone: 30 },
+    costMultiplier: 1.3,
+    timeMultiplier: 1.15,
+    growthFactor: 1.23,
+    baseBuildTime: 60,
+    populationBase: 60,
+    maxLevel: 30,
+    pointValue: 3,
+    pointFactor: 1.1,
+    requirements: {}
+  },
+
   warehouse: {
     name: "Warehouse",
     description: "A vast storage complex to protect your resources from the elements and raiding parties. Higher levels increase total resource capacity.",
@@ -144,21 +159,6 @@ const BUILDINGS = {
     storageBase: 1000,
     maxLevel: 30,
     pointValue: 4,
-    pointFactor: 1.1,
-    requirements: {}
-  },
-
-  farm: {
-    name: "Farm",
-    description: "Providing the grain and livestock necessary to sustain your village. The larger the farm, the greater the population your village can support.",
-    baseCost: { wood: 45, clay: 40, stone: 30 },
-    costMultiplier: 1.3,
-    timeMultiplier: 1.15,
-    growthFactor: 1.23,
-    baseBuildTime: 60,
-    populationBase: 60,
-    maxLevel: 30,
-    pointValue: 3,
     pointFactor: 1.1,
     requirements: {}
   },

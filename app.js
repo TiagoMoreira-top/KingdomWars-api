@@ -6,6 +6,7 @@ require('dotenv').config();
 const authRoutes = require('./Routes/Auth');
 const worldRoutes = require('./Routes/WorldRoutes');
 const villageRoutes = require('./Routes/VillageRoutes');
+const playerRoutes = require('./Routes/PlayerRoutes');
 
 const app = express();
 
@@ -27,6 +28,7 @@ mongoose.connect(process.env.MONGO_MASTER_URI)
 app.use('/api/auth', authRoutes);
 app.use('/worlds', worldRoutes);
 app.use('/villages', villageRoutes);
+app.use('/players', playerRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

@@ -52,3 +52,86 @@ exports.joinWorld = async (req, res) => {
         });
     }
 };
+
+exports.getMap = async (req, res) => {
+  try {
+    const { x, y, range } = req.query;
+    
+    // 🏰 Ensure the scout has coordinates
+    if (x === undefined || y === undefined) {
+      return res.status(400).json({ error: "⚔️ ERROR: Provide coordinates to scan the horizon." });
+    }
+
+    const villageModel = req.getVillageModel();
+    const centerX = parseInt(x);
+    const centerY = parseInt(y);
+    const r = Math.min(parseInt(range) || 10, 30); // Limit range to prevent scroll overflow
+
+    const minX = centerX - r;
+    const maxX = centerX + r;
+    const minY = centerY - r;
+    const maxY = centerY + r;
+
+    // ⚔️ Fetch only villages within the visible boundaries
+    const villages = await villageModel.find({
+      x: { $gte: minX, $lte: maxX },
+      y: { $gte: minY, $lte: maxY }
+    }).select('name x y ownerId ownerName points').lean();
+
+    const tiles = [];
+
+    // 📜 Generate the grid from North-West to South-East
+    for (let iy = minY; iy <= maxY; iy++) {
+      for (let ix = minX; ix <= maxX; ix++) {
+        const foundVillage = villages.find(v => v.x === ix && v.y === iy);
+
+        tiles.push({
+          x: ix,
+          y: iy,
+          village: foundVillage ? {
+            _id: foundVillage._id,
+            name: foundVillage.name,
+            ownerName: foundVillage.ownerName,
+            points: foundVillage.points,
+            // 🛡️ Determine if this is thy own keep or a rival's
+            isOwn: foundVillage.ownerId.toString() === req.worldPlayer._id.toString()
+          } : null
+        });
+      }
+    }
+
+    res.status(200).json({
+      centerX,
+      centerY,
+      range: r,
+      tiles
+    });
+
+  } catch (error) {
+    console.error("Map Fetch Error:", error);
+    res.status(500).json({ 
+      error: "⚡ OMEN: The royal cartographer has lost his way." 
+    });
+  }
+};
+
+exports.getWorldCensus = async (req, res) => {
+  try {
+    const villageModel = req.getVillageModel();
+    
+    // 🕊️ We only fetch the bare essentials: X, Y, and Owner for the entire world
+    const villages = await villageModel.find({})
+      .select('x y ownerId')
+      .lean();
+
+    const formattedVillages = villages.map(v => ({
+      x: v.x,
+      y: v.y,
+      isOwn: v.ownerId.toString() === req.worldPlayer._id.toString()
+    }));
+
+    res.status(200).json({ villages: formattedVillages });
+  } catch (error) {
+    res.status(500).json({ error: "⚡ OMEN: Could not count the kingdom's keeps." });
+  }
+};
