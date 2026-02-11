@@ -1,5 +1,4 @@
 const UNITS = {
-  // --- THE RANK AND FILE (Infantry) ---
   serf_levy: {
     name: "Serf Levy",
     description: "Peasants armed with tools. Weak, but their loss does not weigh on the crown's soul.",
@@ -52,19 +51,6 @@ const UNITS = {
     lootCapacity: 15,
     requirements: { barracks: 3 }
   },
-  longbowman: {
-    name: "Longbowman",
-    description: "Highly trained archers capable of thinning enemy ranks before the clash.",
-    baseCost: { wood: 140, clay: 30, stone: 0 },
-    trainTime: 180,
-    population: 1,
-    attack: 30,
-    defenseGeneral: 10,
-    defenseCavalry: 5,
-    speed: 16,
-    lootCapacity: 10,
-    requirements: { barracks: 7, woodFarm: 10 }
-  },
   archer: {
     name: "Crossbow Archer",
     description: "Slow-firing but deadly. Their bolts can pierce the thickest of hauberks.",
@@ -78,8 +64,20 @@ const UNITS = {
     lootCapacity: 10,
     requirements: { barracks: 5 }
   },
+  longbowman: {
+    name: "Longbowman",
+    description: "Highly trained archers capable of thinning enemy ranks before the clash.",
+    baseCost: { wood: 140, clay: 30, stone: 0 },
+    trainTime: 180,
+    population: 1,
+    attack: 30,
+    defenseGeneral: 10,
+    defenseCavalry: 5,
+    speed: 16,
+    lootCapacity: 10,
+    requirements: { barracks: 7, woodFarm: 10 }
+  },
 
-  // --- THE MOUNTED & ELITE (Cavalry) ---
   palfrey_messenger: {
     name: "Palfrey Messenger",
     description: "Swift riders who carry reports. They are eyes in the dark, not blades in the light.",
@@ -120,17 +118,43 @@ const UNITS = {
     requirements: { stable: 10, greatHall: 12 }
   },
 
-  // --- THE HIGH COMMAND ---
+  ram: {
+    name: "Battering Ram",
+    description: "An iron-capped oak trunk designed to splinter enemy gates and crumble walls.",
+    baseCost: { wood: 300, clay: 200, stone: 200 },
+    trainTime: 1200,
+    population: 5,
+    attack: 2,
+    defenseGeneral: 20,
+    defenseCavalry: 50,
+    speed: 30,
+    lootCapacity: 0,
+    requirements: { workshop: 1 }
+  },
+  catapult: {
+    name: "War Catapult",
+    description: "A siege engine that hurls massive stones. Capable of reducing buildings to rubble.",
+    baseCost: { wood: 320, clay: 400, stone: 100 },
+    trainTime: 1800,
+    population: 8,
+    attack: 100,
+    defenseGeneral: 100,
+    defenseCavalry: 50,
+    speed: 30,
+    lootCapacity: 0,
+    requirements: { workshop: 10 }
+  },
+
   noble: {
     name: "Noble Lord",
     description: "A claimant to the throne. His presence can convince other villages to join thy cause.",
     baseCost: { wood: 20000, clay: 25000, stone: 20000 },
-    trainTime: 10800, // 3 hours
+    trainTime: 10800,
     population: 100,
     attack: 50,
     defenseGeneral: 100,
     defenseCavalry: 100,
-    speed: 35, // Carrying heavy diplomatic scrolls
+    speed: 35,
     lootCapacity: 0,
     requirements: { academy: 1 }
   }

@@ -58,8 +58,6 @@ const VillageSchema = new mongoose.Schema({
     palace:       { type: Number, default: 0 },
     reunionPoint: { type: Number, default: 0 },
     statue:       { type: Number, default: 0 },
-    fountain:     { type: Number, default: 0 },
-    tree:         { type: Number, default: 0 },
     arena:        { type: Number, default: 0 },
     watchTower:   { type: Number, default: 0 },
     library:      { type: Number, default: 0 },
@@ -97,7 +95,10 @@ const VillageSchema = new mongoose.Schema({
     // --- The Mounted & Elite ---
     palfrey_messenger: { type: Number, default: 0 },
     gilded_knight:     { type: Number, default: 0 },
-    light_knight:     { type: Number, default: 0 },
+    light_knight:      { type: Number, default: 0 },
+
+    ram:               { type: Number, default: 0 },
+    catapult:          { type: Number, default: 0 },
 
     noble:     { type: Number, default: 0 }
   },

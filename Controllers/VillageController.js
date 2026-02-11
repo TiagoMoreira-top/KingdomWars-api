@@ -309,8 +309,16 @@ exports.recruitUnits = async (req, res) => {
       return res.status(402).json({ error: "📉 DEPLETED: Thy coffers or thy housing cannot support such a battalion." });
     }
 
-    const trainingBuilding = uConfig.requirements?.stable ? 'stable' : 'barracks';
-    const queueKey = trainingBuilding === 'stable' ? 'stableQueue' : 'trainingQueue';
+    let trainingBuilding = 'barracks';
+    let queueKey = 'trainingQueue';
+
+    if (uConfig.requirements?.workshop) {
+      trainingBuilding = 'workshop';
+      queueKey = 'workshopQueue';
+    } else if (uConfig.requirements?.stable) {
+      trainingBuilding = 'stable';
+      queueKey = 'stableQueue';
+    }
 
     const buildingLevel = village.buildings[trainingBuilding] || 0;
     const bConfig = BUILDINGS[trainingBuilding];
