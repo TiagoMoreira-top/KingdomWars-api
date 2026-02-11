@@ -135,3 +135,44 @@ exports.getWorldCensus = async (req, res) => {
     res.status(500).json({ error: "⚡ OMEN: Could not count the kingdom's keeps." });
   }
 };
+
+exports.getWorldRankings = async (req, res) => {
+  try {
+    const worldPlayerModel = req.getWorldPlayerModel();
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const skip = (page - 1) * limit;
+
+    const [rankings, totalPlayers] = await Promise.all([
+      worldPlayerModel.find({})
+        .sort({ points: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      worldPlayerModel.countDocuments({})
+    ]);
+
+    const formattedRankings = rankings.map((player, index) => ({
+      _id: player._id,
+      username: player.username,
+      allianceName: player.allianceName || "Stateless Wanderer",
+      points: player.points || 0,
+      villagesCount: player.villagesCount || 0,
+      rank: skip + index + 1
+    }));
+
+    res.status(200).json({
+      success: true,
+      page,
+      totalPages: Math.ceil(totalPlayers / limit),
+      totalPlayers,
+      rankings: formattedRankings
+    });
+
+  } catch (error) {
+    console.error("Ranking Fetch Error:", error);
+    res.status(500).json({ 
+      error: "⚡ OMEN: The Great Ledger is torn; the rankings are currently hidden from sight." 
+    });
+  }
+};

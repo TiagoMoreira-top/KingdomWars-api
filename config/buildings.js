@@ -103,15 +103,192 @@ const BUILDINGS = {
     description: "The birthplace of siege warfare. Here, master engineers construct devastating rams and catapults to shatter the gates of those who defy your rule.",
     baseCost: { wood: 300, clay: 350, stone: 400 },
     costMultiplier: 1.8,
-    timeMultiplier: 1.35, // Slightly slower build time than stables due to complex machinery
+    timeMultiplier: 1.35,
     growthFactor: 0.9,
-    baseBuildTime: 720,   // 12 minutes base
-    basePop: 15,          // Requires a larger crew of specialized engineers
+    baseBuildTime: 720,
+    basePop: 15,
     popMultiplier: 1.25,
-    maxLevel: 15,         // Siege workshops usually have fewer levels but higher impact
+    maxLevel: 15,
     pointValue: 14,
     pointFactor: 1.28,
-    requirements: { greatHall: 10, barracks: 10, stable: 5 } // Advanced military requirement
+    requirements: { greatHall: 10, barracks: 10, stable: 5 }
+  },
+
+  hospital: {
+    name: "Hospital",
+    description: "A sanctuary of healing where the wounded return from the brink of death. Higher levels increase the percentage of fallen troops recovered after battle.",
+    baseCost: { wood: 450, clay: 400, stone: 500 },
+    costMultiplier: 1.35,
+    timeMultiplier: 1.4,
+    growthFactor: 0.05,
+    baseBuildTime: 900,
+    basePop: 10,
+    popMultiplier: 1.2,
+    recoveryBase: 0.05,
+    maxLevel: 15,
+    pointValue: 15,
+    pointFactor: 1.25,
+    requirements: { greatHall: 15, barracks: 10 }
+  },
+
+  dragonsPit: {
+    name: "Dragons Pit",
+    description: "A terrifying subterranean lair where ancient fire-drakes are beckoned. Only the most legendary kingdoms can hope to house such primal power.",
+    baseCost: { wood: 2500, clay: 2000, stone: 5000 },
+    costMultiplier: 2.2,
+    timeMultiplier: 1.8,
+    growthFactor: 0.5,
+    baseBuildTime: 3600,
+    basePop: 50,
+    popMultiplier: 1.5,
+    maxLevel: 5,
+    pointValue: 250,
+    pointFactor: 1.5,
+    requirements: { greatHall: 25, workshop: 15, palace: 1 }
+  },
+
+  church: {
+    name: "Church",
+    description: "A beacon of faith that bolsters the resolve of your people. The divine presence increases the loyalty and morale of troops within its influence.",
+    baseCost: { wood: 600, clay: 400, stone: 800 },
+    costMultiplier: 1.5,
+    timeMultiplier: 1.6,
+    growthFactor: 1,
+    baseBuildTime: 1200,
+    basePop: 20,
+    popMultiplier: 1.3,
+    maxLevel: 3,
+    pointValue: 100,
+    pointFactor: 1.4,
+    requirements: { greatHall: 20, farm: 20 }
+  },
+
+  palace: {
+    name: "Palace",
+    description: "The ultimate symbol of sovereignty. A grand palace allows you to educate Noblemen to conquer and annex new villages for your empire.",
+    baseCost: { wood: 1000, clay: 1200, stone: 1500 },
+    costMultiplier: 2.0,
+    timeMultiplier: 1.7,
+    growthFactor: 0.1,
+    baseBuildTime: 1800,
+    basePop: 80,
+    popMultiplier: 1.4,
+    maxLevel: 3,
+    pointValue: 200,
+    pointFactor: 1.35,
+    requirements: { greatHall: 20, market: 20, stable: 20 }
+  },
+
+  reunionPoint: {
+    name: "Reunion Point",
+    description: "The central gathering spot for your generals. Here you organize movements, send support, and launch calculated strikes against your foes.",
+    baseCost: { wood: 20, clay: 40, stone: 10 },
+    costMultiplier: 1.1,
+    timeMultiplier: 1.1,
+    growthFactor: 0.01,
+    baseBuildTime: 30,
+    basePop: 0,
+    popMultiplier: 1.0,
+    maxLevel: 1,
+    pointValue: 2,
+    pointFactor: 1,
+    requirements: {}
+  },
+
+  statue: {
+    name: "Statue",
+    description: "An effigy of your kingdom's Paladin. Presence of this monument allows you to summon a legendary hero to lead your armies.",
+    baseCost: { wood: 220, clay: 220, stone: 220 },
+    costMultiplier: 1,
+    timeMultiplier: 1,
+    growthFactor: 0,
+    baseBuildTime: 150,
+    basePop: 10,
+    popMultiplier: 1,
+    maxLevel: 1,
+    pointValue: 24,
+    pointFactor: 1,
+    requirements: {}
+  },
+
+  fountain: {
+    name: "Fountain",
+    description: "A decorative masterpiece that brings tranquility to the square. It serves as a minor boost to village aesthetics and public happiness.",
+    baseCost: { wood: 50, clay: 50, stone: 300 },
+    costMultiplier: 1.2,
+    timeMultiplier: 1.1,
+    growthFactor: 0.02,
+    baseBuildTime: 400,
+    basePop: 2,
+    popMultiplier: 1.05,
+    maxLevel: 10,
+    pointValue: 5,
+    pointFactor: 1.1,
+    requirements: { greatHall: 5 }
+  },
+
+  tree: {
+    name: "Sacred Tree",
+    description: "An ancient sentinel of nature. Preserving this tree maintains the spiritual balance of the land.",
+    baseCost: { wood: 10, clay: 10, stone: 10 },
+    costMultiplier: 1.1,
+    timeMultiplier: 1.05,
+    growthFactor: 0,
+    baseBuildTime: 10,
+    basePop: 1,
+    popMultiplier: 1,
+    maxLevel: 20,
+    pointValue: 1,
+    pointFactor: 1.05,
+    requirements: {}
+  },
+
+  arena: {
+    name: "Arena",
+    description: "A place of sport and blood. Gladiatorial matches held here keep the populace entertained and hone the reflexes of your combatants.",
+    baseCost: { wood: 500, clay: 300, stone: 700 },
+    costMultiplier: 1.4,
+    timeMultiplier: 1.45,
+    growthFactor: 0.08,
+    baseBuildTime: 1200,
+    basePop: 25,
+    popMultiplier: 1.22,
+    maxLevel: 20,
+    pointValue: 18,
+    pointFactor: 1.25,
+    requirements: { greatHall: 15, barracks: 15 }
+  },
+
+  watchTower: {
+    name: "Watch Tower",
+    description: "Extends the vision of your scouts. A higher tower allows for early detection of incoming raids and hidden enemy movements.",
+    baseCost: { wood: 150, clay: 100, stone: 250 },
+    costMultiplier: 1.3,
+    timeMultiplier: 1.3,
+    growthFactor: 0.2,
+    baseBuildTime: 500,
+    basePop: 5,
+    popMultiplier: 1.15,
+    maxLevel: 20,
+    pointValue: 10,
+    pointFactor: 1.2,
+    requirements: { greatHall: 5, wall: 5 }
+  },
+
+  library: {
+    name: "Library",
+    description: "A repository of forgotten scrolls. Scholars here research technologies that reduce resource costs and improve village efficiency.",
+    baseCost: { wood: 300, clay: 400, stone: 200 },
+    costMultiplier: 1.25,
+    timeMultiplier: 1.3,
+    growthFactor: 0.04,
+    baseBuildTime: 800,
+    basePop: 8,
+    popMultiplier: 1.18,
+    maxLevel: 20,
+    pointValue: 12,
+    pointFactor: 1.22,
+    requirements: { greatHall: 10, market: 5 }
   },
 
   market: {
