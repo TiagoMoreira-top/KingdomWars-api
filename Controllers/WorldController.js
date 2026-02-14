@@ -57,7 +57,6 @@ exports.getMap = async (req, res) => {
   try {
     const { x, y, range } = req.query;
     
-    // 🏰 Ensure the scout has coordinates
     if (x === undefined || y === undefined) {
       return res.status(400).json({ error: "⚔️ ERROR: Provide coordinates to scan the horizon." });
     }
@@ -65,22 +64,23 @@ exports.getMap = async (req, res) => {
     const villageModel = req.getVillageModel();
     const centerX = parseInt(x);
     const centerY = parseInt(y);
-    const r = Math.min(parseInt(range) || 10, 30); // Limit range to prevent scroll overflow
+    const r = Math.min(parseInt(range) || 10, 30);
 
     const minX = centerX - r;
     const maxX = centerX + r;
     const minY = centerY - r;
     const maxY = centerY + r;
 
-    // ⚔️ Fetch only villages within the visible boundaries
     const villages = await villageModel.find({
       x: { $gte: minX, $lte: maxX },
       y: { $gte: minY, $lte: maxY }
-    }).select('name x y ownerId ownerName points').lean();
+    })
+    .select('name x y ownerId points upgradeQueue')
+    .populate('ownerId', 'username')
+    .lean();
 
     const tiles = [];
 
-    // 📜 Generate the grid from North-West to South-East
     for (let iy = minY; iy <= maxY; iy++) {
       for (let ix = minX; ix <= maxX; ix++) {
         const foundVillage = villages.find(v => v.x === ix && v.y === iy);
@@ -91,10 +91,10 @@ exports.getMap = async (req, res) => {
           village: foundVillage ? {
             _id: foundVillage._id,
             name: foundVillage.name,
-            ownerName: foundVillage.ownerName,
+            ownerName: foundVillage.ownerId?.username || "Abandoned Keep",
             points: foundVillage.points,
-            // 🛡️ Determine if this is thy own keep or a rival's
-            isOwn: foundVillage.ownerId.toString() === req.worldPlayer._id.toString()
+            isOwn: foundVillage.ownerId?._id?.toString() === req.worldPlayer._id.toString(),
+            isUpgrading: foundVillage.upgradeQueue && foundVillage.upgradeQueue.length > 0
           } : null
         });
       }

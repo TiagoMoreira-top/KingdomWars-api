@@ -4,7 +4,7 @@ const VillageSchema = new mongoose.Schema({
   name: { type: String, required: true },
   ownerId: { 
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Player',
+    ref: 'WorldPlayer',
     required: true 
   },
   worldId: { 
