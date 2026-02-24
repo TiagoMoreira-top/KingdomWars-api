@@ -29,6 +29,7 @@ exports.getVillageData = async (req, res) => {
       serverTime: Date.now()
     });
   } catch (error) {
+    console.log(error);
     res.status(500).json({ error: "⚔️ TAVERN RUMOR: Could not fetch village data." });
   }
 };
@@ -535,5 +536,110 @@ exports.renameVillage = async (req, res) => {
     res.status(500).json({ 
       error: "⚡ OMEN: The scribes have run out of ink; the name remains unchanged." 
     });
+  }
+};
+
+exports.sendMission = async (req, res) => {
+  try {
+    const { villageId } = req.params;
+    const { targetX, targetY, units, type } = req.body;
+    
+    const villageModel = req.getVillageModel();
+    const missionModel = req.getMissionModel();
+
+    // 1. 🏰 GATHER INTELLIGENCE
+    let originVillage = await villageModel.findOne({ 
+      _id: villageId, 
+      ownerId: req.worldPlayer._id 
+    });
+
+    if (!originVillage) {
+      return res.status(404).json({ error: "🏰 MYSTERY: Thy home keep is not found on the scrolls." });
+    }
+
+    originVillage = await VillageService.getUpdatedVillage(originVillage._id, req.world);
+
+    const targetVillage = await villageModel.findOne({ x: targetX, y: targetY });
+    if (!targetVillage) {
+      return res.status(404).json({ error: "🗺️ UNKNOWN: Those coordinates lead to a bottomless abyss." });
+    }
+
+    if (originVillage.x === targetX && originVillage.y === targetY) {
+      return res.status(400).json({ error: "⚔️ FOLLY: Thou cannot lay siege to thy own gates!" });
+    }
+
+    // 2. 🛡️ INSPECT THE HOST
+    let slowestSpeed = 0;
+    const unitsToMarch = {};
+
+    for (const [unitKey, count] of Object.entries(units)) {
+      const numCount = Math.floor(Number(count) || 0);
+      if (numCount <= 0) continue;
+
+      const available = originVillage.army[unitKey] || 0;
+      if (numCount > available) {
+        return res.status(400).json({ error: `⚔️ DESERTION: Not enough units in the garrison for such a march!` });
+      }
+
+      const uConfig = UNITS[unitKey];
+      if (uConfig) {
+        slowestSpeed = Math.max(slowestSpeed, uConfig.speed);
+        unitsToMarch[unitKey] = numCount;
+      }
+    }
+
+    if (Object.keys(unitsToMarch).length === 0) {
+      return res.status(400).json({ error: "⚔️ EMPTY: Thou cannot send a ghost army to do a man's work." });
+    }
+
+    // 3. 🗺️ CHART THE COURSE
+    const dist = Math.sqrt(Math.pow(targetX - originVillage.x, 2) + Math.pow(targetY - originVillage.y, 2));
+    const travelMinutes = Math.round(dist * slowestSpeed);
+    const arrivalTime = new Date(Date.now() + travelMinutes * 60000);
+
+    // 4. 📜 INSCRIBE THE MARCH
+    const mission = new missionModel({
+      type, 
+      originVillage: originVillage._id,
+      // 📍 NEW: Storing the origin coordinates so the host can find their way home
+      originCoords: { x: originVillage.x, y: originVillage.y },
+      targetVillage: targetVillage._id,
+      targetCoords: { x: targetX, y: targetY },
+      lord: req.worldPlayer._id,
+      units: unitsToMarch,
+      departureTime: new Date(),
+      arrivalTime,
+      status: 'marching'
+    });
+
+    // ⚔️ THE CONNECTION
+    originVillage.outgoingMissions.push(mission._id);
+    targetVillage.incomingMissions.push(mission._id);
+
+    for (const [unitKey, count] of Object.entries(unitsToMarch)) {
+      originVillage.army[unitKey] -= count;
+    }
+
+    originVillage.markModified('army');
+    originVillage.markModified('outgoingMissions');
+    targetVillage.markModified('incomingMissions');
+
+    // 5. 📉 COMMIT
+    await Promise.all([
+      mission.save(),
+      originVillage.save(),
+      targetVillage.save()
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: type === 'attack' ? "⚔️ TO WAR: Thy banners are raised!" : "🛡️ AID: Thy host marches to support our allies!",
+      mission,
+      village: originVillage
+    });
+
+  } catch (error) {
+    console.error("Send Mission Error:", error);
+    res.status(500).json({ error: "⚡ OMEN: The heavens forbid this march. The messenger has fallen." });
   }
 };

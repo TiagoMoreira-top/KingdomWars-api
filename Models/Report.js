@@ -1,17 +1,62 @@
 const mongoose = require('mongoose');
 
-const reportSchema = new mongoose.Schema({
-    attackerId: String,
-    defenderId: String,
-    attackerName: String,
-    defenderName: String,
-    originName: String,
-    targetName: String,
-    winner: String,
-    attackerUnits: Object, // { spearman: { initial: 100, lost: 20 }, ... }
-    defenderUnits: Object,
-    loot: { wood: Number, clay: Number, iron: Number },
-    timestamp: { type: Date, default: Date.now }
+const ReportSchema = new mongoose.Schema({
+  recipient: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
+  },
+  type: {
+    type: String,
+    required: true,
+    enum: [
+      'MISSION_COMBAT', 
+      'MISSION_SCOUT', 
+      'ACHIEVEMENT', 
+      'FRIEND_REQUEST', 
+      'ALLIANCE_INVITE', 
+      'SYSTEM_INFO'
+    ]
+  },
+  status: {
+    type: String,
+    enum: ['UNREAD', 'READ', 'ARCHIVED'],
+    default: 'UNREAD'
+  },
+  title: {
+    type: String,
+    required: true
+  },
+  
+  // This field contains the specific data for each type.
+  // Using 'Mixed' allows us to store different objects (loot, player names, etc.)
+  data: {
+    type: mongoose.Schema.Types.Mixed,
+    required: true
+  },
+
+  // Optional: references to other entities involved
+  originUser: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  originVillage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Village'
+  },
+
+  expiresAt: {
+    type: Date,
+    default: () => new Date(+new Date() + 7*24*60*60*1000) // Auto-delete after 7 days
+  }
+}, { 
+  timestamps: true 
 });
 
-module.exports = mongoose.model('Report', reportSchema);
+// Index for performance when cleaning up old reports
+ReportSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+module.exports = {
+  ReportSchema: ReportSchema
+};

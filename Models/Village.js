@@ -170,6 +170,26 @@ const VillageSchema = new mongoose.Schema({
     }
   ],
 
+  // --- THE COMMAND CENTER ---
+  // Tracks active movements in and out of the gates
+  outgoingMissions: [{ 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Mission' 
+  }],
+  incomingMissions: [{ 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Mission' 
+  }],
+
+  // Tracks units that are currently stationed HERE but belong to others (Support)
+  reinforcements: [{
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorldPlayer' },
+    originVillageId: { type: mongoose.Schema.Types.ObjectId, ref: 'Village' },
+    units: {
+      
+    }
+  }],
+
   // --- SETTLEMENT STATUS ---
   loyalty: { type: Number, default: 100 },
   lastLoyaltyUpdate: { type: Date, default: Date.now }

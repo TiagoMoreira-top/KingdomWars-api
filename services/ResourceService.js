@@ -16,16 +16,12 @@ const ResourceService = {
         const now = new Date();
         const lastUpdate = new Date(village.lastResourceUpdate);
         
-        // ⏳ Calculate time elapsed in hours
         const secondsElapsed = (now - lastUpdate) / 1000;
         const hoursElapsed = secondsElapsed / 3600;
-
-        if (hoursElapsed <= 0) return village;
 
         const updatedResources = { ...village.resources.toObject() };
         const warehouseLvl = village.buildings.warehouse || 0;
         
-        // Fetch storage capacity
         const capacity = this.calculateCapacity(
             BUILDINGS.warehouse.storageBase,
             BUILDINGS.warehouse.growthFactor,
@@ -34,9 +30,10 @@ const ResourceService = {
 
         updatedResources.maxStorage = capacity;
 
-        // 🪵 Update Wood, Clay, Stone
+        // 📜 Initialize the Production Ledger
+        const production = {};
         const types = ['wood', 'clay', 'stone'];
-        // Inside thy tick(village) function
+
         types.forEach(type => {
             const buildingKey = `${type}Farm`;
             const level = village.buildings[buildingKey] || 0;
@@ -47,14 +44,19 @@ const ResourceService = {
                 level
             );
 
-            const gain = hourlyRate * hoursElapsed;
-            
-            // ✍️ Use Math.floor to keep integers in the ledger
-            const total = updatedResources[type] + gain;
-            updatedResources[type] = Math.min(capacity, Math.floor(total));
+            // 💰 Record the current rate for the Monarch's Topbar
+            production[type] = Math.floor(hourlyRate);
+
+            if (hoursElapsed > 0) {
+                const gain = hourlyRate * hoursElapsed;
+                const total = (village.resources[type] || 0) + gain;
+                updatedResources[type] = Math.min(capacity, Math.floor(total));
+            }
         });
 
+        // ✍️ Update the Village Record
         village.resources = updatedResources;
+        village.production = production; // Save the rates to the DB
         village.lastResourceUpdate = now;
         
         return village;

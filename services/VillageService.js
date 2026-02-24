@@ -1,17 +1,22 @@
 const BUILDINGS = require('../config/buildings');
 const UNITS = require('../config/units');
 const getWorldConnection = require('../config/dbManager');
+
 const { VillageSchema } = require('../Models/Village');
+const { MissionSchema } = require('../Models/Mission');
+
 const BuildingService = require('./BuildingService');
 const MilitaryService = require('./MilitaryService');
 const CensusService = require('./CensusService');
 const ResourceService = require('./ResourceService');
+const MissionService = require('./MissionService');
 
 const VillageService = {
 
     async getUpdatedVillage(villageId, world) {
         const worldConn = getWorldConnection(world.dbName);
-        const VillageModel = worldConn.model('Village', VillageSchema);
+        const VillageModel = worldConn.models.Village || worldConn.model('Village', VillageSchema);
+        const MissionModel = worldConn.models.Mission || worldConn.model('Mission', MissionSchema);
 
         let village = await VillageModel.findById(villageId);
         if (!village) throw new Error("⚔️ EXILE: Thou hast no land in this realm!");
@@ -42,8 +47,22 @@ const VillageService = {
         // Calculates wood, clay, and stone based on elapsed time
         village = ResourceService.tick(village);
 
+        village = await MissionService.processArrivals(village, worldConn, now);
+
         // 📜 FINAL DECREE: Save all changes to the realm
         await village.save();
+
+        await village.populate([
+            {
+                path: 'outgoingMissions',
+                populate: { path: 'targetVillage', select: 'name x y ownerId' }
+            },
+            {
+                path: 'incomingMissions',
+                populate: { path: 'originVillage', select: 'name x y ownerId' }
+            }
+        ]);
+        
         return village;
     },
   
