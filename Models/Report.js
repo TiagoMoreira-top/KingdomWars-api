@@ -13,10 +13,11 @@ const ReportSchema = new mongoose.Schema({
     enum: [
       'MISSION_COMBAT', 
       'MISSION_SCOUT', 
+      'MISSION_SUPPORT',
       'ACHIEVEMENT', 
       'FRIEND_REQUEST', 
       'ALLIANCE_INVITE', 
-      'SYSTEM_INFO'
+      'SYSTEM_INFO',
     ]
   },
   status: {

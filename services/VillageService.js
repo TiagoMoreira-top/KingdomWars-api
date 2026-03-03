@@ -60,6 +60,10 @@ const VillageService = {
             {
                 path: 'incomingMissions',
                 populate: { path: 'originVillage', select: 'name x y ownerId' }
+            },
+            {
+                path: 'reinforcements.originVillageId',
+                select: 'name x y ownerId'
             }
         ]);
         
