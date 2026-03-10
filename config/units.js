@@ -1,5 +1,5 @@
 const UNITS = {
-  common_slaves: {
+  common_slave: {
       name: "Common Slave",
       description: "Unfortunate souls captured in raids or purchased from traders. They possess no will to fight until forged in the Arena.",
       baseCost: { wood: 0, clay: 0, stone: 0, gold: 1000 },
@@ -170,7 +170,7 @@ const UNITS = {
     defenseCavalry: 100,
     speed: 35,
     lootCapacity: 0,
-    requirements: { academy: 1 }
+    requirements: { palace: 1 }
   }
 };
 

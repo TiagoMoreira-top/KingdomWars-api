@@ -15,10 +15,14 @@ const GladiatorSchema = new mongoose.Schema({
         default: 'Idle' 
     },
     
+    // --- ⏳ TIMING STATS ---
+    // This stores the exact date/time when the current action ends
+    trainingUntil: { type: Date, default: null },
+
     // --- BATTLE STATS ---
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
-    battlePoints: { type: Number, default: 10 }, // This is their strength
+    battlePoints: { type: Number, default: 10 },
     health: { type: Number, default: 100 },
     maxHealth: { type: Number, default: 100 },
 
@@ -26,6 +30,7 @@ const GladiatorSchema = new mongoose.Schema({
     losses: { type: Number, default: 0 }
 }, { timestamps: true });
 
-module.exports = {
-  GladiatorSchema: GladiatorSchema
+module.exports = 
+{
+    GladiatorSchema: GladiatorSchema
 };

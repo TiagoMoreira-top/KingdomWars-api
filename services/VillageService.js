@@ -11,6 +11,7 @@ const MilitaryService = require('./MilitaryService');
 const CensusService = require('./CensusService');
 const ResourceService = require('./ResourceService');
 const MissionService = require('./MissionService');
+const GladiatorService = require('./GladiatorService');
 
 const VillageService = {
 
@@ -19,7 +20,7 @@ const VillageService = {
         const VillageModel = worldConn.models.Village || worldConn.model('Village', VillageSchema);
         const MissionModel = worldConn.models.Mission || worldConn.model('Mission', MissionSchema);
 
-        let village = await VillageModel.findById(villageId);
+        let village = await VillageModel.findById(villageId).populate('gladiators');
         if (!village) throw new Error("⚔️ EXILE: Thou hast no land in this realm!");
 
         const now = Date.now();
@@ -35,6 +36,8 @@ const VillageService = {
         // ⚔️ 2. WAR SERVICE: Handle Recruitment
         // Handles trainingQueue, stableQueue, and workshopQueue trickle production
         village = MilitaryService.processRecruitment(village, now);
+
+        village = GladiatorService.processTraining(village, now);
 
         // console.log("CensusService");
 
@@ -52,6 +55,9 @@ const VillageService = {
 
         // 📜 FINAL DECREE: Save all changes to the realm
         await village.save();
+
+        // If gladiators are separate documents, we save their changes
+        await Promise.all(village.gladiators.map(g => g.save()));
 
         await village.populate([
             {

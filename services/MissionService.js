@@ -39,123 +39,168 @@ const MissionService = {
     return village;
   },
 
-  async resolveAttack(defenderVillage, mission, VillageModel, MissionModel, ReportModel) {
-    const attackerUnits = mission.units; 
-    const defenderUnits = defenderVillage.army; 
+  async resolveAttack(defenderVillage, mission, VillageModel, MissionModel, ReportModel)
+  {
+      const attackerUnits = mission.units;
+      const defenderUnits = defenderVillage.army;
 
-    let totalAtk = 0;
-    let totalDef = 0;
-    let totalCapacity = 0;
-    const attackerInitial = Object.fromEntries(attackerUnits);
-    const defenderInitial = defenderUnits.toObject ? defenderUnits.toObject() : { ...defenderUnits };
+      let totalAtk = 0;
+      let totalDef = 0;
+      let totalCapacity = 0;
+      const attackerInitial = Object.fromEntries(attackerUnits);
+      const defenderInitial = defenderUnits.toObject ? defenderUnits.toObject() : { ...defenderUnits };
 
-    for (const [uKey, count] of attackerUnits.entries()) {
-      totalAtk += (UNITS[uKey]?.attack || 0) * count;
-    }
-
-    const wallBonus = 1 + ((defenderVillage.buildings?.wall || 0) * 0.05);
-    for (const [uKey, count] of Object.entries(defenderInitial)) {
-      if (uKey === '_id' || uKey === '__v') continue; 
-      totalDef += (UNITS[uKey]?.defenseInfantry || 0) * count * wallBonus;
-    }
-
-    const atkWin = totalAtk > totalDef;
-    const lossRatio = totalDef === 0 || totalAtk === 0 ? 0 : (atkWin ? (totalDef / totalAtk) : (totalAtk / totalDef));
-
-    const attackerLosses = {};
-    const defenderLosses = {};
-
-    for (const uKey of Object.keys(defenderInitial)) {
-      if (uKey === '_id' || uKey === '__v') continue;
-      const currentCount = defenderUnits[uKey] || 0;
-      const losses = Math.floor(currentCount * (atkWin ? 1 : lossRatio));
-      if (losses > 0) defenderLosses[uKey] = losses;
-      defenderUnits[uKey] = Math.max(0, currentCount - losses);
-    }
-
-    const returningUnits = {};
-    let anySurvivors = false;
-    for (const [uKey, count] of attackerUnits.entries()) {
-      const survivors = Math.floor(count * (atkWin ? (1 - lossRatio) : 0));
-      const losses = count - survivors;
-      if (losses > 0) attackerLosses[uKey] = losses;
-      if (survivors > 0) {
-        returningUnits[uKey] = survivors;
-        totalCapacity += (UNITS[uKey]?.capacity || 0) * survivors;
-        anySurvivors = true;
+      // 1. Calculate Attacker Strength
+      for (const [uKey, count] of attackerUnits.entries())
+      {
+          totalAtk += (UNITS[uKey]?.attack || 0) * count;
       }
-    }
 
-    // 💰 LOOTING LOGIC
-    const lootedResources = { wood: 0, clay: 0, stone: 0, iron: 0 };
-    if (atkWin && anySurvivors) {
-      const resourcesAvailable = ['wood', 'clay', 'stone', 'iron'];
-      const totalResources = resourcesAvailable.reduce((sum, res) => sum + defenderVillage.resources[res], 0);
-      
-      if (totalResources > 0) {
-        const lootAmount = Math.min(totalCapacity, totalResources);
-        resourcesAvailable.forEach(res => {
-          const share = defenderVillage.resources[res] / totalResources;
-          const taken = Math.floor(lootAmount * share);
-          lootedResources[res] = taken;
-          defenderVillage.resources[res] -= taken;
-        });
+      // 2. Calculate Defender Strength (Wall Bonus)
+      const wallBonus = 1 + ((defenderVillage.buildings?.wall || 0) * 0.05);
+      for (const [uKey, count] of Object.entries(defenderInitial))
+      {
+          if (uKey === '_id' || uKey === '__v' || uKey === 'wounded') continue;
+          totalDef += (UNITS[uKey]?.defenseInfantry || 0) * count * wallBonus;
       }
-    }
 
-    const commonData = {
-      targetName: defenderVillage.name,
-      targetCoords: { x: defenderVillage.x, y: defenderVillage.y },
-      attackerName: mission.originVillage?.name || "Unknown Lord",
-      attackerCoords: { x: mission.originVillage?.x, y: mission.originVillage?.y },
-      result: atkWin ? 'Victory' : 'Defeat'
-    };
+      const atkWin = totalAtk > totalDef;
+      const lossRatio = totalDef === 0 || totalAtk === 0 ? 0 : (atkWin ? (totalDef / totalAtk) : (totalAtk / totalDef));
 
-    await new ReportModel({
-      recipient: mission.lord,
-      type: 'MISSION_COMBAT',
-      title: `Battle at ${defenderVillage.name}`,
-      originVillage: mission.originVillage._id,
-      data: { ...commonData, loot: lootedResources, losses: attackerLosses, unitsSent: attackerInitial }
-    }).save();
+      // 🏥 HOSPITAL SURVIVAL LOGIC (Normal Units Only)
+      // Every level of hospital saves 5% of the troops that would have died
+      const hospLevel = defenderVillage.buildings?.hospital || 0;
+      const survivalRate = Math.min(hospLevel * 0.05, 0.50); // Cap at 50% recovery
 
-    await new ReportModel({
-      recipient: defenderVillage.ownerId,
-      type: 'MISSION_COMBAT',
-      title: `Siege of ${defenderVillage.name}`,
-      originVillage: mission.originVillage._id,
-      data: { ...commonData, result: atkWin ? 'Defeat' : 'Victory', lootLost: lootedResources, losses: defenderLosses, unitsDefending: defenderInitial }
-    }).save();
+      const attackerLosses = {};
+      const defenderLosses = {};
+      const newlyWounded = {};
 
-    if (anySurvivors) {
-      const travelTime = new Date(mission.arrivalTime).getTime() - new Date(mission.departureTime).getTime();
-      const returnMission = new MissionModel({
-        type: 'return',
-        originVillage: mission.targetVillage,
-        targetVillage: mission.originVillage,
-        targetCoords: { 
-          x: mission.originCoords.x, 
-          y: mission.originCoords.y 
-        },
-        lord: mission.lord,
-        units: returningUnits,
-        resources: lootedResources, // 🎒 Load the loot onto the returning army
-        departureTime: mission.arrivalTime,
-        arrivalTime: new Date(new Date(mission.arrivalTime).getTime() + travelTime),
-        status: 'marching'
-      });
-      await returnMission.save();
+      // 3. Process Defender Losses & Recovery
+      for (const uKey of Object.keys(defenderInitial))
+      {
+          if (uKey === '_id' || uKey === '__v' || uKey === 'wounded' || uKey === 'common_slave') continue;
+          
+          const currentCount = defenderUnits[uKey] || 0;
+          const totalPotentialLosses = Math.floor(currentCount * (atkWin ? 1 : lossRatio));
+          
+          if (totalPotentialLosses > 0)
+          {
+              // Hospital saves a portion of the normal units
+              const savedByHospital = Math.floor(totalPotentialLosses * survivalRate);
+              const actualPermanentLosses = totalPotentialLosses - savedByHospital;
 
-      await VillageModel.findByIdAndUpdate(mission.originVillage, {
-        $push: { incomingMissions: returnMission._id },
-        $pull: { outgoingMissions: mission._id }
-      });
-    } else {
-      await VillageModel.findByIdAndUpdate(mission.originVillage, { $pull: { outgoingMissions: mission._id } });
-    }
+              defenderLosses[uKey] = actualPermanentLosses;
+              
+              // Move "saved" units to the wounded state
+              if (savedByHospital > 0)
+              {
+                  newlyWounded[uKey] = savedByHospital;
+                  
+                  // Initialize wounded object if it doesn't exist
+                  if (!defenderUnits.wounded) defenderUnits.wounded = {};
+                  
+                  defenderUnits.wounded[uKey] = (defenderUnits.wounded[uKey] || 0) + savedByHospital;
+              }
 
-    defenderVillage.markModified('army');
-    defenderVillage.markModified('resources');
+              // Subtract all losses (both dead and wounded) from the active army
+              defenderUnits[uKey] = Math.max(0, currentCount - totalPotentialLosses);
+          }
+      }
+
+      // 4. Process Attacker Losses (Attackers don't get hospital benefits on foreign soil)
+      const returningUnits = {};
+      let anySurvivors = false;
+      for (const [uKey, count] of attackerUnits.entries())
+      {
+          const survivors = Math.floor(count * (atkWin ? (1 - lossRatio) : 0));
+          const losses = count - survivors;
+          if (losses > 0) attackerLosses[uKey] = losses;
+          if (survivors > 0)
+          {
+              returningUnits[uKey] = survivors;
+              totalCapacity += (UNITS[uKey]?.capacity || 0) * survivors;
+              anySurvivors = true;
+          }
+      }
+
+      // 5. Looting Logic
+      const lootedResources = { wood: 0, clay: 0, stone: 0, iron: 0 };
+      if (atkWin && anySurvivors)
+      {
+          const resourcesAvailable = ['wood', 'clay', 'stone', 'iron'];
+          const totalResValue = resourcesAvailable.reduce((sum, res) => sum + (defenderVillage.resources[res] || 0), 0);
+          
+          if (totalResValue > 0)
+          {
+              const lootAmount = Math.min(totalCapacity, totalResValue);
+              resourcesAvailable.forEach(res =>
+              {
+                  const share = (defenderVillage.resources[res] || 0) / totalResValue;
+                  const taken = Math.floor(lootAmount * share);
+                  lootedResources[res] = taken;
+                  defenderVillage.resources[res] -= taken;
+              });
+          }
+      }
+
+      // 6. Finalize State and Reports
+      const commonData = {
+          targetName: defenderVillage.name,
+          targetCoords: { x: defenderVillage.x, y: defenderVillage.y },
+          attackerName: mission.originVillage?.name || "Unknown Lord",
+          attackerCoords: { x: mission.originCoords.x, y: mission.originCoords.y },
+          result: atkWin ? 'Victory' : 'Defeat'
+      };
+
+      // Attacker Report
+      await new ReportModel({
+          recipient: mission.lord,
+          type: 'MISSION_COMBAT',
+          title: `Battle at ${defenderVillage.name}`,
+          originVillage: mission.originVillage._id,
+          data: { ...commonData, loot: lootedResources, losses: attackerLosses, unitsSent: attackerInitial }
+      }).save();
+
+      // Defender Report (Shows permanent losses and saved wounded)
+      await new ReportModel({
+          recipient: defenderVillage.ownerId,
+          type: 'MISSION_COMBAT',
+          title: `Siege of ${defenderVillage.name}`,
+          originVillage: mission.originVillage._id,
+          data: { ...commonData, result: atkWin ? 'Defeat' : 'Victory', lootLost: lootedResources, losses: defenderLosses, wounded: newlyWounded, unitsDefending: defenderInitial }
+      }).save();
+
+      // 7. Handle Returning Army
+      if (anySurvivors)
+      {
+          const travelTime = new Date(mission.arrivalTime).getTime() - new Date(mission.departureTime).getTime();
+          const returnMission = new MissionModel({
+              type: 'return',
+              originVillage: mission.targetVillage,
+              targetVillage: mission.originVillage,
+              targetCoords: { x: mission.originCoords.x, y: mission.originCoords.y },
+              lord: mission.lord,
+              units: returningUnits,
+              resources: lootedResources,
+              departureTime: mission.arrivalTime,
+              arrivalTime: new Date(new Date(mission.arrivalTime).getTime() + travelTime),
+              status: 'marching'
+          });
+          await returnMission.save();
+
+          await VillageModel.findByIdAndUpdate(mission.originVillage, {
+              $push: { incomingMissions: returnMission._id },
+              $pull: { outgoingMissions: mission._id }
+          });
+      }
+      else
+      {
+          await VillageModel.findByIdAndUpdate(mission.originVillage, { $pull: { outgoingMissions: mission._id } });
+      }
+
+      defenderVillage.markModified('army');
+      defenderVillage.markModified('resources');
   },
 
   async resolveReturn(village, mission, ReportModel) {

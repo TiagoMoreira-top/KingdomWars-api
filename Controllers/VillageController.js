@@ -271,215 +271,275 @@ exports.cancelUpgrade = async (req, res) => {
   }
 };
 
-exports.recruitUnits = async (req, res) => {
-  try {
-    const { villageId } = req.params;
-    const { unitKey, amount } = req.body;
-    const villageModel = req.getVillageModel();
+exports.recruitUnits = async (req, res) =>
+{
+    try
+    {
+        const { villageId } = req.params;
+        const { unitKey, amount } = req.body;
+        const villageModel = req.getVillageModel();
 
-    const village = await villageModel.findById(villageId);
-    if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+        const village = await villageModel.findById(villageId);
+        if (!village)
+        {
+            return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+        }
 
-    const uConfig = UNITS[unitKey];
-    if (!uConfig || amount <= 0) {
-      return res.status(400).json({ error: "📜 FOLLY: Thy recruitment orders are nonsensical." });
+        const uConfig = UNITS[unitKey];
+        if (!uConfig || amount <= 0)
+        {
+            return res.status(400).json({ error: "📜 FOLLY: Thy recruitment orders are nonsensical." });
+        }
+
+        const requirementsMet = Object.entries(uConfig.requirements || {}).every(
+            ([reqB, reqL]) => (village.buildings[reqB] || 0) >= reqL
+        );
+
+        if (!requirementsMet)
+        {
+            return res.status(403).json({ error: "🏗️ FORBIDDEN: Thy village lacks the required architecture for these warriors." });
+        }
+
+        // 💰 Calculate Costs (Added Gold support for Palace units)
+        const totalWood = (uConfig.baseCost.wood || 0) * amount;
+        const totalClay = (uConfig.baseCost.clay || 0) * amount;
+        const totalStone = (uConfig.baseCost.stone || 0) * amount;
+        const totalGold = (uConfig.baseCost.gold || 0) * amount;
+        const totalPop = (uConfig.population || 0) * amount;
+
+        const hasResources =
+            village.resources.wood >= totalWood &&
+            village.resources.clay >= totalClay &&
+            village.resources.stone >= totalStone &&
+            (village.resources.gold || 0) >= totalGold;
+
+        const freePop = village.population.habitants - village.population.used;
+        const hasPop = freePop >= totalPop;
+
+        if (!hasResources || !hasPop)
+        {
+            return res.status(402).json({ error: "📉 DEPLETED: Thy coffers or thy housing cannot support such a battalion." });
+        }
+
+        // 🏗️ Determine Training Building and Queue
+        let trainingBuilding = 'barracks';
+        let queueKey = 'trainingQueue';
+
+        if (uConfig.requirements?.palace)
+        {
+            trainingBuilding = 'palace';
+            queueKey = 'palaceQueue';
+        }
+        else if (uConfig.requirements?.workshop)
+        {
+            trainingBuilding = 'workshop';
+            queueKey = 'workshopQueue';
+        }
+        else if (uConfig.requirements?.stable)
+        {
+            trainingBuilding = 'stable';
+            queueKey = 'stableQueue';
+        }
+
+        const buildingLevel = village.buildings[trainingBuilding] || 0;
+        const bConfig = BUILDINGS[trainingBuilding];
+        const growthFactor = bConfig?.growthFactor || 0.1;
+
+        const speedMultiplier = 1 + (buildingLevel * growthFactor);
+        const timePerUnit = uConfig.trainTime / speedMultiplier;
+        const totalDuration = timePerUnit * amount;
+
+        // ⏳ Calculate Timing
+        const now = new Date();
+        let startTime;
+
+        if (!village[queueKey])
+        {
+            village[queueKey] = [];
+        }
+
+        const activeQueue = village[queueKey];
+
+        if (activeQueue.length > 0)
+        {
+            const lastJob = activeQueue[activeQueue.length - 1];
+            const lastFinish = new Date(lastJob.finishTime);
+            // If the last job finished in the past but hasn't been "ticked" yet, 
+            // the new job starts from now. Otherwise, it appends to the end.
+            startTime = lastFinish < now ? now : lastFinish;
+        }
+        else
+        {
+            startTime = now;
+        }
+
+        const finishTime = new Date(startTime.getTime() + totalDuration * 1000);
+
+        // 💸 Deduct Resources
+        village.resources.wood -= totalWood;
+        village.resources.clay -= totalClay;
+        village.resources.stone -= totalStone;
+        if (totalGold > 0) village.resources.gold -= totalGold;
+        village.population.used += totalPop;
+
+        // 📝 Add to Queue
+        village[queueKey].push({
+            unitKey,
+            amount,
+            unitsLeft: amount,
+            startTime,
+            finishTime,
+            timePerUnit: timePerUnit * 1000,
+            lastUpdate: startTime,
+            totalDuration,
+            costs: {
+                wood: totalWood,
+                clay: totalClay,
+                stone: totalStone,
+                gold: totalGold,
+                population: totalPop
+            }
+        });
+
+        // Ensure MongoDB detects the change in the dynamic queue array
+        village.markModified(queueKey);
+        village.markModified('resources');
+        village.markModified('population');
+
+        await village.save();
+
+        res.status(200).json({
+            success: true,
+            message: `⚔️ MUSTERED: ${amount} ${uConfig.name} have been added to the ${trainingBuilding} grounds.`,
+            village
+        });
     }
-
-    const requirementsMet = Object.entries(uConfig.requirements || {}).every(
-      ([reqB, reqL]) => (village.buildings[reqB] || 0) >= reqL
-    );
-
-    if (!requirementsMet) {
-      return res.status(403).json({ error: "🏗️ FORBIDDEN: Thy village lacks the required architecture for these warriors." });
+    catch (error)
+    {
+        console.error("Recruitment Error:", error);
+        res.status(500).json({ error: "⚡ OMEN: The forge fires have died unexpectedly." });
     }
-
-    const totalWood = uConfig.baseCost.wood * amount;
-    const totalClay = uConfig.baseCost.clay * amount;
-    const totalStone = uConfig.baseCost.stone * amount;
-    const totalPop = uConfig.population * amount;
-
-    const hasResources = 
-      village.resources.wood >= totalWood &&
-      village.resources.clay >= totalClay &&
-      village.resources.stone >= totalStone;
-
-    const freePop = village.population.habitants - village.population.used;
-    const hasPop = freePop >= totalPop;
-
-    if (!hasResources || !hasPop) {
-      return res.status(402).json({ error: "📉 DEPLETED: Thy coffers or thy housing cannot support such a battalion." });
-    }
-
-    let trainingBuilding = 'barracks';
-    let queueKey = 'trainingQueue';
-
-    if (uConfig.requirements?.workshop) {
-      trainingBuilding = 'workshop';
-      queueKey = 'workshopQueue';
-    } else if (uConfig.requirements?.stable) {
-      trainingBuilding = 'stable';
-      queueKey = 'stableQueue';
-    }
-
-    const buildingLevel = village.buildings[trainingBuilding] || 0;
-    const bConfig = BUILDINGS[trainingBuilding];
-    const growthFactor = bConfig?.growthFactor || 0.1; 
-    
-    const speedMultiplier = 1 + (buildingLevel * growthFactor);
-    const timePerUnit = uConfig.trainTime / speedMultiplier;
-    const totalDuration = timePerUnit * amount;
-
-    const now = new Date();
-    let startTime;
-
-    const activeQueue = village[queueKey] || [];
-
-    if (activeQueue.length > 0) {
-      const lastJob = activeQueue[activeQueue.length - 1];
-      const lastFinish = new Date(lastJob.finishTime);
-      startTime = lastFinish < now ? now : lastFinish;
-    } else {
-      startTime = now;
-    }
-
-    const finishTime = new Date(startTime.getTime() + totalDuration * 1000);
-
-    village.resources.wood -= totalWood;
-    village.resources.clay -= totalClay;
-    village.resources.stone -= totalStone;
-    village.population.used += totalPop;
-
-    if (!village[queueKey]) village[queueKey] = [];
-
-    village[queueKey].push({
-      unitKey,
-      amount,
-      unitsLeft: amount,
-      startTime,
-      finishTime,
-      timePerUnit: timePerUnit * 1000,
-      lastUpdate: startTime,
-      totalDuration,
-      costs: {
-        wood: totalWood,
-        clay: totalClay,
-        stone: totalStone,
-        population: totalPop
-      }
-    });
-
-    await village.save();
-
-    res.status(200).json({
-      success: true,
-      message: `⚔️ MUSTERED: ${amount} ${uConfig.name} have been added to the ${trainingBuilding} grounds.`,
-      village
-    });
-
-  } catch (error) {
-    console.error("Recruitment Error:", error);
-    res.status(500).json({ error: "⚡ OMEN: The forge fires have died unexpectedly." });
-  }
 };
 
-exports.cancelRecruitment = async (req, res) => {
-  try {
-    const { villageId } = req.params;
-    const { jobId } = req.body;
-    const villageModel = req.getVillageModel();
+exports.cancelRecruitment = async (req, res) =>
+{
+    try
+    {
+        const { villageId } = req.params;
+        const { jobId } = req.body;
+        const villageModel = req.getVillageModel();
 
-    let village = await villageModel.findById(villageId);
-    if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+        let village = await villageModel.findById(villageId);
+        if (!village) 
+        {
+            return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+        }
 
-    // 🔥 PRE-SURGERY TICK: Process any units finished in the last few seconds
-    village = await VillageService.getUpdatedVillage(villageId, req.world); 
+        // 🔥 PRE-SURGERY TICK: Process any units finished in the last few seconds
+        village = await VillageService.getUpdatedVillage(villageId, req.world);
 
-    // 🕵️ Find which queue holds the job
-    const queueKeys = ['trainingQueue', 'stableQueue', 'workshopQueue'];
-    let foundQueueKey = null;
-    let jobIndex = -1;
+        // 🕵️ Find which queue holds the job (Added palaceQueue here)
+        const queueKeys = ['trainingQueue', 'stableQueue', 'workshopQueue', 'palaceQueue'];
+        let foundQueueKey = null;
+        let jobIndex = -1;
 
-    for (const key of queueKeys) {
-      const idx = village[key].findIndex(j => j._id.toString() === jobId);
-      if (idx !== -1) {
-        foundQueueKey = key;
-        jobIndex = idx;
-        break;
-      }
+        for (const key of queueKeys)
+        {
+            const idx = village[key].findIndex(j => j._id.toString() === jobId);
+            if (idx !== -1)
+            {
+                foundQueueKey = key;
+                jobIndex = idx;
+                break;
+            }
+        }
+
+        if (!foundQueueKey)
+        {
+            return res.status(404).json({ error: "📜 VANISHED: This order is no longer in the scrolls." });
+        }
+
+        const activeQueue = village[foundQueueKey];
+        const job = activeQueue[jobIndex];
+        const uConfig = UNITS[job.unitKey];
+
+        // 💰 1. THE REBATE (Calculated only on remaining units)
+        const refundFactor = 0.9;
+        const unitsToRefund = job.unitsLeft;
+
+        if (unitsToRefund > 0)
+        {
+            village.resources.wood += Math.floor((uConfig.baseCost.wood || 0) * unitsToRefund * refundFactor);
+            village.resources.clay += Math.floor((uConfig.baseCost.clay || 0) * unitsToRefund * refundFactor);
+            village.resources.stone += Math.floor((uConfig.baseCost.stone || 0) * unitsToRefund * refundFactor);
+            village.resources.gold += Math.floor((uConfig.baseCost.gold || 0) * unitsToRefund * refundFactor);
+
+            village.population.used = Math.max(0, village.population.used - (uConfig.population * unitsToRefund));
+        }
+
+        // ⚔️ 2. THE REMOVAL
+        const wasFirst = jobIndex === 0;
+        activeQueue.splice(jobIndex, 1);
+
+        // ⏳ 3. THE CHAIN REPAIR (Recalculate timestamps for the remaining items)
+        let runningTimestamp = Date.now();
+
+        activeQueue.forEach((item, index) =>
+        {
+            const itemConfig = UNITS[item.unitKey];
+
+            // Determine building for this specific queue
+            let trainingBuilding = 'barracks';
+            if (foundQueueKey === 'stableQueue') trainingBuilding = 'stable';
+            if (foundQueueKey === 'workshopQueue') trainingBuilding = 'workshop';
+            if (foundQueueKey === 'palaceQueue') trainingBuilding = 'palace';
+
+            const buildingLevel = village.buildings[trainingBuilding] || 0;
+            const bConfig = BUILDINGS[trainingBuilding];
+            
+            // Standardizing speed calculation
+            const growthFactor = bConfig?.growthFactor || 0.1;
+            const speedMultiplier = 1 + (buildingLevel * growthFactor);
+
+            const msPerUnit = (itemConfig.trainTime / speedMultiplier) * 1000;
+            const totalRemainingMs = msPerUnit * item.unitsLeft;
+
+            if (index === 0 && !wasFirst)
+            {
+                // If we didn't remove the first item, it keeps its current completion track
+                runningTimestamp = new Date(item.finishTime).getTime();
+            }
+            else
+            {
+                // Shift this job forward to fill the gap created by cancellation
+                const newStart = runningTimestamp;
+                const newFinish = newStart + totalRemainingMs;
+
+                item.startTime = new Date(newStart);
+                item.finishTime = new Date(newFinish);
+                item.lastUpdate = new Date(newStart);
+                item.timePerUnit = msPerUnit; // Store the updated speed
+
+                runningTimestamp = newFinish;
+            }
+        });
+
+        village.markModified(foundQueueKey);
+        village.markModified('resources');
+        village.markModified('population');
+        await village.save();
+
+        res.status(200).json({
+            success: true,
+            message: `🕊️ DISSOLVED: The order for ${unitsToRefund} warriors was halted. Resources returned.`,
+            village
+        });
     }
-
-    if (!foundQueueKey) {
-      return res.status(404).json({ error: "📜 VANISHED: This order is no longer in the scrolls." });
+    catch (error)
+    {
+        console.error("Cancel Recruitment Error:", error);
+        res.status(500).json({ error: "⚡ OMEN: The heavens forbid halting this work." });
     }
-
-    const activeQueue = village[foundQueueKey];
-    const job = activeQueue[jobIndex];
-    const uConfig = UNITS[job.unitKey];
-
-    // 💰 1. THE REBATE (Calculated only on remaining units)
-    const refundFactor = 0.9; 
-    const unitsToRefund = job.unitsLeft;
-
-    if (unitsToRefund > 0) {
-      village.resources.wood += Math.floor((uConfig.baseCost.wood || 0) * unitsToRefund * refundFactor);
-      village.resources.clay += Math.floor((uConfig.baseCost.clay || 0) * unitsToRefund * refundFactor);
-      village.resources.stone += Math.floor((uConfig.baseCost.stone || 0) * unitsToRefund * refundFactor);
-      
-      village.population.used = Math.max(0, village.population.used - (uConfig.population * unitsToRefund));
-    }
-
-    // ⚔️ 2. THE REMOVAL
-    const wasFirst = jobIndex === 0;
-    activeQueue.splice(jobIndex, 1);
-
-    // ⏳ 3. THE CHAIN REPAIR (Specific to this queue only)
-    let runningTimestamp = Date.now();
-
-    activeQueue.forEach((item, index) => {
-      const itemConfig = UNITS[item.unitKey];
-      
-      // Determine building for this specific queue
-      const trainingBuilding = foundQueueKey === 'stableQueue' ? 'stable' : 
-                               foundQueueKey === 'workshopQueue' ? 'workshop' : 'barracks';
-                               
-      const buildingLevel = village.buildings[trainingBuilding] || 0;
-      const bConfig = BUILDINGS[trainingBuilding];
-      const speedMultiplier = 1 + (buildingLevel * (bConfig?.growthFactor || 0.1));
-      
-      const msPerUnit = (itemConfig.trainTime / speedMultiplier) * 1000;
-      const totalRemainingMs = msPerUnit * item.unitsLeft;
-
-      if (index === 0 && !wasFirst) {
-        // If we didn't remove the first item, the new first item stays on its current course
-        runningTimestamp = new Date(item.finishTime).getTime();
-      } else {
-        // Shift this job forward to fill the gap
-        const newStart = runningTimestamp;
-        const newFinish = newStart + totalRemainingMs;
-        
-        item.startTime = new Date(newStart);
-        item.finishTime = new Date(newFinish);
-        item.lastUpdate = new Date(newStart);
-        
-        runningTimestamp = newFinish;
-      }
-    });
-
-    village.markModified(foundQueueKey);
-    village.markModified('resources');
-    village.markModified('population');
-    await village.save();
-
-    res.status(200).json({
-      success: true,
-      message: `🕊️ DISSOLVED: The order for ${unitsToRefund} warriors was halted. Resources returned.`,
-      village
-    });
-
-  } catch (error) {
-    console.error("Cancel Recruitment Error:", error);
-    res.status(500).json({ error: "⚡ OMEN: The heavens forbid halting this work." });
-  }
 };
 
 exports.renameVillage = async (req, res) => {
@@ -658,7 +718,7 @@ exports.buySlaves = async (req, res) =>
             return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
         }
 
-        const uConfig = UNITS['common_slaves'];
+        const uConfig = UNITS['common_slave'];
         if (!uConfig || amount <= 0) 
         {
             return res.status(400).json({ error: "📜 FOLLY: Thy slave orders are nonsensical." });
@@ -695,7 +755,7 @@ exports.buySlaves = async (req, res) =>
             village.army = {};
         }
         
-        village.army['common_slaves'] = (village.army['common_slaves'] || 0) + amount;
+        village.army['common_slave'] = (village.army['common_slave'] || 0) + amount;
 
         // 3. Persist Changes
         // Use markModified if army is a Mixed type/Schema-less sub-document
@@ -736,7 +796,7 @@ exports.ascendToGladiator = async (req, res) =>
         }
 
         // 1. Check if we have slaves ready
-        if (!village.army || (village.army.common_slaves || 0) < 1)
+        if (!village.army || (village.army.common_slave || 0) < 1)
         {
             return res.status(400).json({ error: "📜 FOLLY: There are no slaves in thy pits to ascend." });
         }
@@ -778,7 +838,7 @@ exports.ascendToGladiator = async (req, res) =>
         village.gladiators.push(newGladiator._id);
 
         // 6. Consume the Slave
-        village.army.common_slaves -= 1;
+        village.army.common_slave -= 1;
         village.markModified('army');
 
         // 7. Save Village

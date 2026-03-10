@@ -8,6 +8,7 @@ const worldRoutes = require('./Routes/WorldRoutes');
 const villageRoutes = require('./Routes/VillageRoutes');
 const playerRoutes = require('./Routes/PlayerRoutes');
 const ReportRoutes = require('./Routes/ReportRoutes');
+const GladiatorRoutes = require('./Routes/GladiatorRoutes');
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use('/worlds', worldRoutes);
 app.use('/villages', villageRoutes);
 app.use('/players', playerRoutes);
 app.use('/reports', ReportRoutes);
+app.use('/gladiators', GladiatorRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

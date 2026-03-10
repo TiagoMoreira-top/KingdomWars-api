@@ -103,7 +103,21 @@ const VillageSchema = new mongoose.Schema({
 
         noble:     { type: Number, default: 0 },
 
-        common_slaves: { type: Number, default: 0 },
+        common_slave: { type: Number, default: 0 },
+
+        wounded: {
+            serf_levy:         { type: Number, default: 0 },
+            man_at_arms:       { type: Number, default: 0 },
+            longbowman:        { type: Number, default: 0 },
+            spearman:          { type: Number, default: 0 },
+            swordsman:         { type: Number, default: 0 },
+            archer:            { type: Number, default: 0 },
+            palfrey_messenger: { type: Number, default: 0 },
+            gilded_knight:     { type: Number, default: 0 },
+            light_knight:      { type: Number, default: 0 },
+            ram:               { type: Number, default: 0 },
+            catapult:          { type: Number, default: 0 }
+        }
     },
 
     gladiators: [{ 
@@ -179,6 +193,31 @@ const VillageSchema = new mongoose.Schema({
                 gold: { type: Number }, // 🪙 Added Gold Cost
                 population: { type: Number }
             } 
+        }
+    ],
+    palaceQueue: [
+        {
+            unitKey:   { type: String, default: 'noble' },
+            amount:     { type: Number },
+            startTime:  { type: Number },
+            finishTime: { type: Number },
+            timePerUnit: { type: Number },
+            unitsLeft: { type: Number },
+            lastUpdate: { type: Number },
+            costs: {
+                wood: { type: Number },
+                clay: { type: Number },
+                stone: { type: Number },
+                gold: { type: Number }, 
+                population: { type: Number }
+            } 
+        }
+    ],
+    hospitalQueue: [
+        {
+            unitKey: { type: String },
+            amount: { type: Number },
+            finishTime: { type: Number }
         }
     ],
     arenaQueue: [
