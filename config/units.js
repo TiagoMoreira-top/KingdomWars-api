@@ -1,4 +1,18 @@
 const UNITS = {
+  common_slaves: {
+      name: "Common Slave",
+      description: "Unfortunate souls captured in raids or purchased from traders. They possess no will to fight until forged in the Arena.",
+      baseCost: { wood: 0, clay: 0, stone: 0, gold: 1000 },
+      trainTime: 300, // 5 minutes base time
+      population: 1,
+      attack: 0,
+      defenseGeneral: 1,
+      defenseCavalry: 1,
+      speed: 25, // Slaves are slow and shackled
+      lootCapacity: 0,
+      requirements: { arena: 1 }
+  },
+
   serf_levy: {
     name: "Serf Levy",
     description: "Peasants armed with tools. Weak, but their loss does not weigh on the crown's soul.",

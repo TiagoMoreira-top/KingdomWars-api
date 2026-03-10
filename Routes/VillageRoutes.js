@@ -13,6 +13,8 @@ router.post('/:worldId/village/:villageId/recruit', protect, worldGate, VillageC
 router.post('/:worldId/village/:villageId/cancel-recruitment', protect, worldGate, VillageController.cancelRecruitment);
 router.put('/:worldId/village/:villageId/rename', protect, worldGate, VillageController.renameVillage);
 router.post('/:worldId/village/:villageId/send-mission', protect, worldGate, VillageController.sendMission);
+router.post('/:worldId/village/:villageId/buy-slaves', protect, worldGate, VillageController.buySlaves);
+router.post('/:worldId/village/:villageId/ascend-gladiator', protect, worldGate, VillageController.ascendToGladiator);
 router.get('/:worldId/my-villages', protect, worldGate, VillageController.getMyVillages);
 
 module.exports = router;

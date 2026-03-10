@@ -66,6 +66,23 @@ const BUILDINGS = {
     requirements: {}
   },
 
+  goldMine: {
+    name: "Gold Mine",
+    description: "A deep excavation into the mountain's veins. Leveling the mine increases the extraction of precious gold, used for hiring elite mercenaries and funding royal decrees.",
+    baseCost: { wood: 150, clay: 150, stone: 200 },
+    costMultiplier: 1.35,
+    timeMultiplier: 1.45,
+    growthFactor: 1.12,
+    baseBuildTime: 300,
+    basePop: 10,
+    popMultiplier: 1.25,
+    productionBase: 20, // Significantly lower than wood/clay/stone
+    maxLevel: 30,
+    pointValue: 15,
+    pointFactor: 1.25,
+    requirements: { greatHall: 10, warehouse: 10 }
+  },
+
   barracks: {
     name: "Barracks",
     description: "The primary training ground for your infantry. Here, peasants are forged into disciplined soldiers ready to die for your honor.",

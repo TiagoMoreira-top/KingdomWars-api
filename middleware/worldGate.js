@@ -3,6 +3,7 @@ const getWorldConnection = require('../config/dbManager');
 const { VillageSchema } = require('../Models/Village');
 const WorldPlayerSchema = require('../Models/WorldPlayer'); // ⚔️ New Import
 const MissionSchema = require('../Models/Mission');
+const GladiatorSchema = require('../Models/Gladiator');
 
 const worldCache = {};
 
@@ -39,6 +40,10 @@ module.exports = async (req, res, next) => {
     req.world = world;
     req.worldConn = worldConn;
     req.worldPlayer = worldPlayer; // 👑 The Local Lord is now available to all controllers!
+
+    req.getGladiatorModel = () => {
+      return worldConn.models.Gladiator || worldConn.model('Gladiator', GladiatorSchema);
+    };
     
     // Helpers to get models quickly in controllers
     req.getVillageModel = () => {

@@ -643,3 +643,160 @@ exports.sendMission = async (req, res) => {
     res.status(500).json({ error: "⚡ OMEN: The heavens forbid this march. The messenger has fallen." });
   }
 };
+
+exports.buySlaves = async (req, res) => 
+{
+    try 
+    {
+        const { villageId } = req.params;
+        const { amount } = req.body; 
+        const villageModel = req.getVillageModel();
+
+        const village = await villageModel.findById(villageId);
+        if (!village) 
+        {
+            return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+        }
+
+        const uConfig = UNITS['common_slaves'];
+        if (!uConfig || amount <= 0) 
+        {
+            return res.status(400).json({ error: "📜 FOLLY: Thy slave orders are nonsensical." });
+        }
+
+        // 🏗️ Check if Arena exists
+        const arenaLevel = village.buildings.arena || 0;
+        if (arenaLevel < 1) 
+        {
+            return res.status(403).json({ error: "🏗️ FORBIDDEN: Thou must build an Arena to house slaves." });
+        }
+
+        // 💰 Cost Calculation
+        const totalGold = uConfig.baseCost.gold * amount;
+        const totalPop = uConfig.population * amount;
+
+        const hasGold = (village.resources.gold || 0) >= totalGold;
+        const freePop = village.population.habitants - village.population.used;
+        const hasPop = freePop >= totalPop;
+
+        if (!hasGold || !hasPop) 
+        {
+            return res.status(402).json({ error: "📉 DEPLETED: Thy treasury is empty or thy housing is full." });
+        }
+
+        // ✍️ Instant Update State
+        // 1. Deduct Resources
+        village.resources.gold -= totalGold;
+        village.population.used += totalPop;
+
+        // 2. Immediate Delivery to Army
+        if (!village.army) 
+        {
+            village.army = {};
+        }
+        
+        village.army['common_slaves'] = (village.army['common_slaves'] || 0) + amount;
+
+        // 3. Persist Changes
+        // Use markModified if army is a Mixed type/Schema-less sub-document
+        village.markModified('army');
+        village.markModified('resources');
+        village.markModified('population');
+        
+        await village.save();
+
+        res.status(200).json({
+            success: true,
+            message: `⛓️ ACQUIRED: ${amount} Slaves have entered the Arena pits.`,
+            village
+        });
+
+    } 
+    catch (error) 
+    {
+        console.error("Slave Purchase Error:", error);
+        res.status(500).json({ error: "⚡ OMEN: The slave traders have vanished into the mist." });
+    }
+};
+
+exports.ascendToGladiator = async (req, res) =>
+{
+    try
+    {
+        const { villageId } = req.params;
+        const { gladiatorName, type } = req.body;
+        
+        const villageModel = req.getVillageModel();
+        const gladiatorModel = req.getGladiatorModel();
+
+        const village = await villageModel.findById(villageId);
+        if (!village)
+        {
+            return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+        }
+
+        // 1. Check if we have slaves ready
+        if (!village.army || (village.army.common_slaves || 0) < 1)
+        {
+            return res.status(400).json({ error: "📜 FOLLY: There are no slaves in thy pits to ascend." });
+        }
+
+        // 2. Validate Name
+        if (!gladiatorName || gladiatorName.trim().length < 2)
+        {
+            return res.status(400).json({ error: "✍️ ERROR: Every legend must have a name." });
+        }
+
+        // 3. Determine Starting Battle Points
+        let startingBP = 10;
+        if (type === 'Murmillo') startingBP = 15;
+        if (type === 'Retiarius') startingBP = 12;
+
+        const gladiatorData = {
+            villageId: village._id,
+            ownerId: village.ownerId,
+            name: gladiatorName.trim(),
+            type: type || 'Murmillo',
+            status: 'Idle',
+            level: 1,
+            experience: 0,
+            battlePoints: startingBP,
+            health: 100,
+            maxHealth: 100,
+            wins: 0,
+            losses: 0
+        };
+
+        // 4. Create the Gladiator document
+        const newGladiator = new gladiatorModel(gladiatorData);
+
+        await newGladiator.save();
+
+        // 5. LINK TO VILLAGE: This is the missing step!
+        // We push the new ID into the gladiators array we added to the schema
+        if (!village.gladiators) village.gladiators = [];
+        village.gladiators.push(newGladiator._id);
+
+        // 6. Consume the Slave
+        village.army.common_slaves -= 1;
+        village.markModified('army');
+
+        // 7. Save Village
+        await village.save();
+
+        // 8. POPULATE: Ensure the response contains the full gladiator objects, not just IDs
+        await village.populate('gladiators');
+
+        res.status(201).json({
+            success: true,
+            message: `👑 ASCENDED: ${gladiatorName} has risen from the pits!`,
+            gladiator: newGladiator,
+            village: village // Now contains the populated gladiators array
+        });
+    }
+    catch (error)
+    {
+        console.error("Ascension Error:", error);
+        res.status(500).json({ error: "⚡ OMEN: The gods refuse this sacrifice." });
+    }
+};

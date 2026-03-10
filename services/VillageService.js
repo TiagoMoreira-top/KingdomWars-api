@@ -4,6 +4,7 @@ const getWorldConnection = require('../config/dbManager');
 
 const { VillageSchema } = require('../Models/Village');
 const { MissionSchema } = require('../Models/Mission');
+const { GladiatorSchema } = require('../Models/Mission');
 
 const BuildingService = require('./BuildingService');
 const MilitaryService = require('./MilitaryService');
@@ -53,6 +54,9 @@ const VillageService = {
         await village.save();
 
         await village.populate([
+            {
+                path: 'gladiators',
+            },
             {
                 path: 'outgoingMissions',
                 populate: { path: 'targetVillage', select: 'name x y ownerId' }
