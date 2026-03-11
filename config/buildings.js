@@ -75,7 +75,7 @@ const BUILDINGS = {
     growthFactor: 1.12,
     baseBuildTime: 300,
     basePop: 10,
-    popMultiplier: 1.25,
+    popMultiplier: 1.1,
     productionBase: 20, // Significantly lower than wood/clay/stone
     maxLevel: 30,
     pointValue: 15,
