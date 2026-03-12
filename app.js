@@ -9,6 +9,7 @@ const villageRoutes = require('./Routes/VillageRoutes');
 const playerRoutes = require('./Routes/PlayerRoutes');
 const ReportRoutes = require('./Routes/ReportRoutes');
 const GladiatorRoutes = require('./Routes/GladiatorRoutes');
+const MarketRoutes = require('./Routes/MarketRoutes');
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use('/villages', villageRoutes);
 app.use('/players', playerRoutes);
 app.use('/reports', ReportRoutes);
 app.use('/gladiators', GladiatorRoutes);
+app.use('/market', MarketRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

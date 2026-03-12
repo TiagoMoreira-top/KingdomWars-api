@@ -32,7 +32,7 @@ const VillageSchema = new mongoose.Schema({
         wood:  { type: Number, default: 500 },
         clay:  { type: Number, default: 500 },
         stone: { type: Number, default: 500 },
-        gold:  { type: Number, default: 0 }, // 💰 Infinite capacity currency
+        gold:  { type: Number, default: 0 }, 
         maxStorage: { type: Number, default: 1000 }
     },
 
@@ -40,10 +40,34 @@ const VillageSchema = new mongoose.Schema({
         wood:  { type: Number, default: 0 },
         clay:  { type: Number, default: 0 },
         stone: { type: Number, default: 0 },
-        gold:  { type: Number, default: 0 } // 🪙 Tracking Gold Mine output
+        gold:  { type: Number, default: 0 } 
     },
 
     lastResourceUpdate: { type: Date, default: Date.now },
+
+    // --- THE LOGISTICS ---
+    merchants: {
+        total: { type: Number, default: 0 },
+        available: { type: Number, default: 0 }
+    },
+
+    merchantMovements: [
+        {
+            type: { type: String, default: 'trade' }, 
+            resources: {
+                wood: { type: Number, default: 0 },
+                clay: { type: Number, default: 0 },
+                stone: { type: Number, default: 0 },
+                gold: { type: Number, default: 0 }
+            },
+            originVillageId: { type: mongoose.Schema.Types.ObjectId, ref: 'Village' },
+            targetX: { type: Number },
+            targetY: { type: Number },
+            arrivalTime: { type: Date },
+            merchantsUsed: { type: Number },
+            isReturning: { type: Boolean, default: false }
+        }
+    ],
 
     // --- THE INFRASTRUCTURE ---
     buildings: {
@@ -51,7 +75,7 @@ const VillageSchema = new mongoose.Schema({
         woodFarm:     { type: Number, default: 1 },
         clayFarm:     { type: Number, default: 1 },
         stoneFarm:    { type: Number, default: 1 },
-        goldMine:     { type: Number, default: 0 }, // ⛏️ New Resource Building
+        goldMine:     { type: Number, default: 0 }, 
         barracks:     { type: Number, default: 0 },
         stable:       { type: Number, default: 0 },
         workshop:     { type: Number, default: 0 },
@@ -90,21 +114,16 @@ const VillageSchema = new mongoose.Schema({
         serf_levy:         { type: Number, default: 0 },
         man_at_arms:       { type: Number, default: 0 },
         longbowman:        { type: Number, default: 0 },
-        spearman:  { type: Number, default: 0 },
-        swordsman: { type: Number, default: 0 },
-        archer:    { type: Number, default: 0 },
-        
+        spearman:          { type: Number, default: 0 },
+        swordsman:         { type: Number, default: 0 },
+        archer:            { type: Number, default: 0 },
         palfrey_messenger: { type: Number, default: 0 },
         gilded_knight:     { type: Number, default: 0 },
         light_knight:      { type: Number, default: 0 },
-
         ram:               { type: Number, default: 0 },
         catapult:          { type: Number, default: 0 },
-
-        noble:     { type: Number, default: 0 },
-
-        common_slave: { type: Number, default: 0 },
-
+        noble:             { type: Number, default: 0 },
+        common_slave:      { type: Number, default: 0 },
         wounded: {
             serf_levy:         { type: Number, default: 0 },
             man_at_arms:       { type: Number, default: 0 },
@@ -136,74 +155,74 @@ const VillageSchema = new mongoose.Schema({
                 wood: { type: Number },
                 clay: { type: Number },
                 stone: { type: Number },
-                gold: { type: Number }, // 🪙 Added Gold Cost
+                gold: { type: Number }, 
                 population: { type: Number }
             } 
         }
     ],
     trainingQueue: [
         {
-            unitKey:   { type: String },
-            amount:     { type: Number },
-            startTime:  { type: Number },
-            finishTime: { type: Number },
+            unitKey:     { type: String },
+            amount:      { type: Number },
+            startTime:   { type: Number },
+            finishTime:  { type: Number },
             timePerUnit: { type: Number },
-            unitsLeft: { type: Number },
-            lastUpdate: { type: Number },
+            unitsLeft:   { type: Number },
+            lastUpdate:  { type: Number },
             costs: {
                 wood: { type: Number },
                 clay: { type: Number },
                 stone: { type: Number },
-                gold: { type: Number }, // 🪙 Added Gold Cost
+                gold: { type: Number }, 
                 population: { type: Number }
             } 
         }
     ],
     stableQueue: [
         {
-            unitKey:   { type: String },
-            amount:     { type: Number },
-            startTime:  { type: Number },
-            finishTime: { type: Number },
+            unitKey:     { type: String },
+            amount:      { type: Number },
+            startTime:   { type: Number },
+            finishTime:  { type: Number },
             timePerUnit: { type: Number },
-            unitsLeft: { type: Number },
-            lastUpdate: { type: Number },
+            unitsLeft:   { type: Number },
+            lastUpdate:  { type: Number },
             costs: {
                 wood: { type: Number },
                 clay: { type: Number },
                 stone: { type: Number },
-                gold: { type: Number }, // 🪙 Added Gold Cost
+                gold: { type: Number }, 
                 population: { type: Number }
             } 
         }
     ],
     workshopQueue: [
         {
-            unitKey:   { type: String },
-            amount:     { type: Number },
-            startTime:  { type: Number },
-            finishTime: { type: Number },
+            unitKey:     { type: String },
+            amount:      { type: Number },
+            startTime:   { type: Number },
+            finishTime:  { type: Number },
             timePerUnit: { type: Number },
-            unitsLeft: { type: Number },
-            lastUpdate: { type: Number },
+            unitsLeft:   { type: Number },
+            lastUpdate:  { type: Number },
             costs: {
                 wood: { type: Number },
                 clay: { type: Number },
                 stone: { type: Number },
-                gold: { type: Number }, // 🪙 Added Gold Cost
+                gold: { type: Number }, 
                 population: { type: Number }
             } 
         }
     ],
     palaceQueue: [
         {
-            unitKey:   { type: String, default: 'noble' },
-            amount:     { type: Number },
-            startTime:  { type: Number },
-            finishTime: { type: Number },
+            unitKey:     { type: String, default: 'noble' },
+            amount:      { type: Number },
+            startTime:   { type: Number },
+            finishTime:  { type: Number },
             timePerUnit: { type: Number },
-            unitsLeft: { type: Number },
-            lastUpdate: { type: Number },
+            unitsLeft:   { type: Number },
+            lastUpdate:  { type: Number },
             costs: {
                 wood: { type: Number },
                 clay: { type: Number },
@@ -243,7 +262,7 @@ const VillageSchema = new mongoose.Schema({
     reinforcements: [{
         ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorldPlayer' },
         originVillageId: { type: mongoose.Schema.Types.ObjectId, ref: 'Village' },
-        units: { type: Object, default: {} } // 🛡️ Explicit Object type to prevent TS errors
+        units: { type: Object, default: {} } 
     }],
 
     // --- SETTLEMENT STATUS ---

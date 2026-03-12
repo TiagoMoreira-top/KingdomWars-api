@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const { VillageSchema } = require('../Models/Village');
 const { GladiatorSchema } = require('../Models/Gladiator');
 const { MissionSchema } = require('../Models/Mission');
+const { MarketOfferSchema } = require('../Models/MarketOffer');
 
 const connections = {};
 
@@ -21,6 +22,7 @@ module.exports = (worldDbName) =>
     conn.model('Village', VillageSchema);
     conn.model('Gladiator', GladiatorSchema);
     conn.model('Mission', MissionSchema);
+    conn.model('MarketOffer', MarketOfferSchema);
     // Add any others: conn.model('Report', ReportSchema);
 
     connections[worldDbName] = conn;

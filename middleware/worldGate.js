@@ -4,6 +4,7 @@ const { VillageSchema } = require('../Models/Village');
 const WorldPlayerSchema = require('../Models/WorldPlayer'); // ⚔️ New Import
 const MissionSchema = require('../Models/Mission');
 const GladiatorSchema = require('../Models/Gladiator');
+const MarketOfferSchema = require('../Models/MarketOffer');
 
 const worldCache = {};
 
@@ -52,6 +53,10 @@ module.exports = async (req, res, next) => {
 
     req.getMissionModel = () => {
       return worldConn.models.Mission || worldConn.model('Mission', MissionSchema);
+    };
+
+    req.getMarketOfferModel = () => {
+      return worldConn.models.MarketOffer || worldConn.model('MarketOffer', MarketOfferSchema);
     };
 
     req.getWorldPlayerModel = () => WorldPlayerModel;

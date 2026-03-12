@@ -5,6 +5,7 @@ const getWorldConnection = require('../config/dbManager');
 const { VillageSchema } = require('../Models/Village');
 const { MissionSchema } = require('../Models/Mission');
 const { GladiatorSchema } = require('../Models/Mission');
+const { MarketOfferSchema } = require('../Models/MarketOffer');
 
 const BuildingService = require('./BuildingService');
 const MilitaryService = require('./MilitaryService');
@@ -12,53 +13,54 @@ const CensusService = require('./CensusService');
 const ResourceService = require('./ResourceService');
 const MissionService = require('./MissionService');
 const GladiatorService = require('./GladiatorService');
+const MarketService = require('./MarketService');
 
 const VillageService = {
 
-    async getUpdatedVillage(villageId, world) {
+    async getUpdatedVillage(villageId, world)
+    {
         const worldConn = getWorldConnection(world.dbName);
         const VillageModel = worldConn.models.Village || worldConn.model('Village', VillageSchema);
         const MissionModel = worldConn.models.Mission || worldConn.model('Mission', MissionSchema);
+        const MarketOfferModel = worldConn.models.MarketOffer || worldConn.model('MarketOffer', MarketOfferSchema);
 
         let village = await VillageModel.findById(villageId).populate('gladiators');
         if (!village) throw new Error("⚔️ EXILE: Thou hast no land in this realm!");
 
         const now = Date.now();
 
-        // console.log("BuildingService");
-
         // 🏗️ 1. MASONRY SERVICE: Handle Construction
-        // Processes the upgradeQueue and adjusts times if the Great Hall finishes
         village = BuildingService.processUpgrades(village, now);
 
-        // console.log("MilitaryService");
-
         // ⚔️ 2. WAR SERVICE: Handle Recruitment
-        // Handles trainingQueue, stableQueue, and workshopQueue trickle production
         village = MilitaryService.processRecruitment(village, now);
-
         village = GladiatorService.processTraining(village, now);
 
-        // console.log("CensusService");
-
-        // 👨‍🌾 3. CENSUS SERVICE: Recalculate Points & Population
-        // Updates global points and used/max population based on current state
-        village = CensusService.recalculateStats(village);
-
-        // console.log("ResourceService");
-
-        // 🪵 4. RESOURCE SERVICE: Harvest Production
-        // Calculates wood, clay, and stone based on elapsed time
+        // 🪵 3. RESOURCE SERVICE: Harvest Production
         village = ResourceService.tick(village);
 
+        // 🏹 4. MISSION SERVICE: Handle Arrivals
         village = await MissionService.processArrivals(village, worldConn, now);
 
-        // 📜 FINAL DECREE: Save all changes to the realm
+        // 🐎 5. MARKET SERVICE: Handle Logistics & Merchant Returns
+        village = MarketService.processMovements(village, now);
+
+        // 🔍 FETCH OFFERS: Since they are removed from the model, we fetch them manually
+        // We attach them to the village object so CensusService can see them
+        const marketOffers = await MarketOfferModel.find({ originVillageId: village._id });
+        village.marketOffers = marketOffers;
+
+        // 👨‍🌾 6. CENSUS SERVICE: Recalculate Points, Population & Merchants
+        // Now receives the village with .marketOffers manually attached
+        village = CensusService.recalculateStats(village);
+
+        // 📜 FINAL DECREE: Save changes
         await village.save();
 
-        // If gladiators are separate documents, we save their changes
+        // Save gladiator changes if necessary
         await Promise.all(village.gladiators.map(g => g.save()));
 
+        // Populate for Frontend
         await village.populate([
             {
                 path: 'gladiators',
@@ -76,8 +78,14 @@ const VillageService = {
                 select: 'name x y ownerId'
             }
         ]);
+
+        // Note: Since marketOffers isn't in the schema, it won't persist in the 
+        // plain village object after some Mongoose operations unless we re-attach it
+        // or include it in the final return object for the frontend.
+        const result = village.toObject();
+        result.marketOffers = marketOffers;
         
-        return village;
+        return result;
     },
   
     calculateUpgradeCost(buildingKey, currentLevel) {

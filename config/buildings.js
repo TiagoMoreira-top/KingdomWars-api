@@ -282,7 +282,7 @@ const BUILDINGS = {
     baseCost: { wood: 80, clay: 90, stone: 70 },
     costMultiplier: 1.25,
     timeMultiplier: 1.3,
-    growthFactor: 1,
+    growthFactor: 1.2,
     baseBuildTime: 240,
     basePop: 5,
     popMultiplier: 1.17,
