@@ -25,46 +25,50 @@ const VillageService = {
         const MarketOfferModel = worldConn.models.MarketOffer || worldConn.model('MarketOffer', MarketOfferSchema);
 
         let village = await VillageModel.findById(villageId).populate('gladiators');
-        if (!village) throw new Error("⚔️ EXILE: Thou hast no land in this realm!");
+        if (!village) 
+        {
+            throw new Error("⚔️ EXILE: Thou hast no land in this realm!");
+        }
 
         const now = Date.now();
 
-        // 🏗️ 1. MASONRY SERVICE: Handle Construction
+        // 🏗️ 1. MASONRY SERVICE
         village = BuildingService.processUpgrades(village, now);
 
-        // ⚔️ 2. WAR SERVICE: Handle Recruitment
+        // ⚔️ 2. WAR SERVICE
         village = MilitaryService.processRecruitment(village, now);
         village = GladiatorService.processTraining(village, now);
 
-        // 🪵 3. RESOURCE SERVICE: Harvest Production
+        // 🪵 3. RESOURCE SERVICE
         village = ResourceService.tick(village);
 
-        // 🏹 4. MISSION SERVICE: Handle Arrivals
+        // 🏹 4. MISSION SERVICE
         village = await MissionService.processArrivals(village, worldConn, now);
 
-        // 🐎 5. MARKET SERVICE: Handle Logistics & Merchant Returns
+        // 🐎 5. MARKET SERVICE
         village = MarketService.processMovements(village, now);
 
-        // 🔍 FETCH OFFERS: Since they are removed from the model, we fetch them manually
-        // We attach them to the village object so CensusService can see them
+        // 🔍 FETCH OFFERS
         const marketOffers = await MarketOfferModel.find({ originVillageId: village._id });
-        village.marketOffers = marketOffers;
 
-        // 👨‍🌾 6. CENSUS SERVICE: Recalculate Points, Population & Merchants
-        // Now receives the village with .marketOffers manually attached
+        /**
+         * 💡 THE FIX FOR DOCUMENTS:
+         * We use .set() with strict: false so Mongoose doesn't strip the field,
+         * OR we assign directly to the internal _doc.
+         */
+        village.set('marketOffers', marketOffers, { strict: false });
+
+        // 👨‍🌾 6. CENSUS SERVICE: Now sees marketOffers on the document
         village = CensusService.recalculateStats(village);
 
-        // 📜 FINAL DECREE: Save changes
+        // 📜 FINAL DECREE
         await village.save();
 
-        // Save gladiator changes if necessary
         await Promise.all(village.gladiators.map(g => g.save()));
 
-        // Populate for Frontend
+        // Final Population for Frontend
         await village.populate([
-            {
-                path: 'gladiators',
-            },
+            { path: 'gladiators' },
             {
                 path: 'outgoingMissions',
                 populate: { path: 'targetVillage', select: 'name x y ownerId' }
@@ -79,13 +83,13 @@ const VillageService = {
             }
         ]);
 
-        // Note: Since marketOffers isn't in the schema, it won't persist in the 
-        // plain village object after some Mongoose operations unless we re-attach it
-        // or include it in the final return object for the frontend.
-        const result = village.toObject();
-        result.marketOffers = marketOffers;
+        /**
+         * Since you need the document returned, we re-verify marketOffers 
+         * is still attached to the internal state before returning.
+         */
+        village.set('marketOffers', marketOffers, { strict: false });
         
-        return result;
+        return village;
     },
   
     calculateUpgradeCost(buildingKey, currentLevel) {
