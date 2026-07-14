@@ -50,3 +50,38 @@ exports.markAsRead = async (req, res) => {
     res.status(500).json({ error: "The scribe's ink has run dry." });
   }
 };
+
+exports.markAllRead = async (req, res) => {
+  try {
+    const ReportModel = req.getReportModel ? req.getReportModel() : req.worldConn.model('Report', ReportSchema);
+    await ReportModel.updateMany(
+      { recipient: req.worldPlayer._id, status: 'UNREAD' },
+      { status: 'READ' }
+    );
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "The scribes could not mark all scrolls." });
+  }
+};
+
+exports.deleteReport = async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const ReportModel = req.getReportModel ? req.getReportModel() : req.worldConn.model('Report', ReportSchema);
+    const report = await ReportModel.findOneAndDelete({ _id: reportId, recipient: req.worldPlayer._id });
+    if (!report) return res.status(404).json({ error: "Scroll not found." });
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "The scroll could not be destroyed." });
+  }
+};
+
+exports.deleteAllReports = async (req, res) => {
+  try {
+    const ReportModel = req.getReportModel ? req.getReportModel() : req.worldConn.model('Report', ReportSchema);
+    await ReportModel.deleteMany({ recipient: req.worldPlayer._id });
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "The archive could not be cleared." });
+  }
+};

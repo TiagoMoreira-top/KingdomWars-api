@@ -15,6 +15,11 @@ router.put('/:worldId/village/:villageId/rename', protect, worldGate, VillageCon
 router.post('/:worldId/village/:villageId/send-mission', protect, worldGate, VillageController.sendMission);
 router.post('/:worldId/village/:villageId/buy-slaves', protect, worldGate, VillageController.buySlaves);
 router.post('/:worldId/village/:villageId/ascend-gladiator', protect, worldGate, VillageController.ascendToGladiator);
+router.post('/:worldId/village/:villageId/hold-mass', protect, worldGate, VillageController.holdMass);
+router.post('/:worldId/village/:villageId/hatch-dragon', protect, worldGate, VillageController.hatchDragon);
+router.post('/:worldId/village/:villageId/train-dragon', protect, worldGate, VillageController.trainDragon);
 router.get('/:worldId/my-villages', protect, worldGate, VillageController.getMyVillages);
+router.post('/:worldId/village/:villageId/recover-wounded', protect, worldGate, VillageController.recoverWounded);
+router.post('/:worldId/village/:villageId/conquer', protect, worldGate, VillageController.conquerVillage);
 
 module.exports = router;

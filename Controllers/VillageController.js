@@ -142,8 +142,12 @@ exports.upgradeBuilding = async (req, res) => {
     // We floor it at 0.1 so building never becomes "instant"
     const speedFactor = Math.max(0.1, 1 - (ghLvl * (ghConfig.growthFactor || 0)));
 
+    const { getPerkMultipliers } = require('../config/kingPerks');
+    const perkMults = getPerkMultipliers(req.worldPlayer.kingLevel || 1);
+    const perkSpeedFactor = Math.max(0.1, speedFactor * (1 - perkMults.buildTimeReduction));
+
     const buildTimeSeconds = Math.max(1, Math.floor(
-      bConfig.baseBuildTime * Math.pow(bConfig.timeMultiplier, costMultiplierLevel) * speedFactor
+      bConfig.baseBuildTime * Math.pow(bConfig.timeMultiplier, costMultiplierLevel) * perkSpeedFactor
     ));
 
     const startTimestamp = lastJobFinish;
@@ -620,8 +624,11 @@ exports.sendMission = async (req, res) => {
     originVillage = await VillageService.getUpdatedVillage(originVillage._id, req.world);
 
     const targetVillage = await villageModel.findOne({ x: targetX, y: targetY });
-    if (!targetVillage) {
+    if (!targetVillage && type !== 'scout') {
       return res.status(404).json({ error: "🗺️ UNKNOWN: Those coordinates lead to a bottomless abyss." });
+    }
+    if (type === 'scout' && !targetVillage) {
+      return res.status(404).json({ error: "🗺️ UNKNOWN: There is no settlement to scout at those coordinates." });
     }
 
     if (originVillage.x === targetX && originVillage.y === targetY) {
@@ -691,9 +698,15 @@ exports.sendMission = async (req, res) => {
       targetVillage.save()
     ]);
 
+    // Track mission launch stat
+    try {
+      const WPModel = req.getWorldPlayerModel();
+      await WPModel.updateOne({ _id: req.worldPlayer._id }, { $inc: { 'stats.missionsLaunched': 1, kingXP: 5 } });
+    } catch (_) {}
+
     res.status(201).json({
       success: true,
-      message: type === 'attack' ? "⚔️ TO WAR: Thy banners are raised!" : "🛡️ AID: Thy host marches to support our allies!",
+      message: type === 'attack' ? "⚔️ TO WAR: Thy banners are raised!" : type === 'scout' ? "🔍 SHADOWS: Thy scouts slip through the darkness!" : "🛡️ AID: Thy host marches to support our allies!",
       mission,
       village: originVillage
     });
@@ -779,6 +792,196 @@ exports.buySlaves = async (req, res) =>
     }
 };
 
+// ⛪ CHURCH — HOLD MASS
+exports.holdMass = async (req, res) => {
+    try {
+        const { villageId } = req.params;
+        const villageModel = req.getVillageModel();
+        const village = await villageModel.findById(villageId);
+        if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+
+        const churchLevel = village.buildings.church || 0;
+        if (churchLevel < 1) return res.status(403).json({ error: "⛪ FORBIDDEN: Thou must build a Church first." });
+
+        // Cooldown: 1 hour between masses
+        const COOLDOWN_MS = 60 * 60 * 1000;
+        if (village.lastMassTime && (Date.now() - new Date(village.lastMassTime).getTime()) < COOLDOWN_MS) {
+            const remaining = Math.ceil((COOLDOWN_MS - (Date.now() - new Date(village.lastMassTime).getTime())) / 60000);
+            return res.status(429).json({ error: `⛪ TOO SOON: The faithful need rest. Try again in ${remaining} minute(s).` });
+        }
+
+        // Cost scales with level
+        const costs = { gold: 300 * churchLevel, wood: 100 * churchLevel, clay: 50 * churchLevel, stone: 150 * churchLevel };
+        if ((village.resources.gold || 0) < costs.gold || village.resources.wood < costs.wood ||
+            village.resources.clay < costs.clay || village.resources.stone < costs.stone) {
+            return res.status(402).json({ error: "💰 EMPTY VAULTS: Thy coffers lack the offerings for this ceremony." });
+        }
+
+        // Loyalty gain: +5 per church level, capped at 100
+        const loyaltyGain = 5 * churchLevel;
+        village.loyalty = Math.min(100, (village.loyalty || 0) + loyaltyGain);
+        village.resources.gold  -= costs.gold;
+        village.resources.wood  -= costs.wood;
+        village.resources.clay  -= costs.clay;
+        village.resources.stone -= costs.stone;
+        village.lastMassTime = new Date();
+
+        village.markModified('resources');
+        await village.save();
+
+        res.status(200).json({
+            success: true,
+            message: `⛪ BLESSED: The faithful have gathered. Loyalty increased by ${loyaltyGain}.`,
+            loyalty: village.loyalty,
+            village
+        });
+    } catch (error) {
+        console.error("Hold Mass Error:", error);
+        res.status(500).json({ error: "⚡ OMEN: The heavens did not answer the prayers." });
+    }
+};
+
+// 🐉 DRAGON'S PIT — HATCH DRAGON
+exports.hatchDragon = async (req, res) => {
+    try {
+        const { villageId } = req.params;
+        const { name, type, fromEgg } = req.body;
+        const villageModel = req.getVillageModel();
+        const DragonModel = req.getDragonModel();
+
+        const village = await villageModel.findById(villageId).populate('dragons');
+        if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+
+        const pitLevel = village.buildings.dragonsPit || 0;
+        if (pitLevel < 1) return res.status(403).json({ error: "🐉 FORBIDDEN: Thou must build a Dragon's Pit first." });
+
+        if ((village.dragons || []).length >= pitLevel) {
+            return res.status(403).json({ error: `🐉 FULL: Thy pit can only house ${pitLevel} dragon(s). Upgrade the pit to hatch more.` });
+        }
+
+        if (!name || name.trim().length < 2) return res.status(400).json({ error: "✍️ Every dragon must have a name." });
+        const validTypes = ['Emberwing', 'Frostwing', 'Stormwing'];
+        if (!validTypes.includes(type)) return res.status(400).json({ error: "📜 Unknown dragon bloodline." });
+
+        if (fromEgg) {
+            // Egg hatch: free but village must have an egg
+            if (!village.dragonEgg) {
+                return res.status(400).json({ error: "🥚 NO EGG: Thy vault holds no dragon egg." });
+            }
+            // Consume the egg
+            const DragonEggModel = req.getDragonEggModel();
+            await DragonEggModel.findByIdAndDelete(village.dragonEgg);
+            village.dragonEgg = null;
+        } else {
+            // Normal hatch cost
+            const cost = { wood: 5000, clay: 3000, stone: 8000, gold: 5000 };
+            if ((village.resources.gold || 0) < cost.gold || village.resources.wood < cost.wood ||
+                village.resources.clay < cost.clay || village.resources.stone < cost.stone) {
+                return res.status(402).json({ error: "💰 INSUFFICIENT: Hatching a dragon demands great tribute." });
+            }
+            village.resources.gold  -= cost.gold;
+            village.resources.wood  -= cost.wood;
+            village.resources.clay  -= cost.clay;
+            village.resources.stone -= cost.stone;
+            village.markModified('resources');
+        }
+
+        const BASE = { Emberwing: { health: 150, attack: 80, defense: 20, breathDamage: 100 },
+                        Frostwing:  { health: 250, attack: 30, defense: 90, breathDamage:  40 },
+                        Stormwing:  { health: 200, attack: 60, defense: 60, breathDamage:  70 } };
+        const stats = BASE[type];
+
+        // Egg hatch is faster (1 hour), normal hatch is 4 hours
+        const hatchUntil = new Date(Date.now() + (fromEgg ? 1 : 4) * 60 * 60 * 1000);
+
+        const dragon = new DragonModel({
+            villageId: village._id,
+            ownerId: village.ownerId,
+            name: name.trim(),
+            type,
+            status: 'Hatching',
+            level: 1,
+            hatchUntil,
+            ...stats,
+            maxHealth: stats.health
+        });
+
+        await dragon.save();
+
+        village.dragons.push(dragon._id);
+        await village.save();
+        await village.populate('dragons');
+
+        try {
+            const WPModel = req.getWorldPlayerModel();
+            await WPModel.updateOne({ _id: village.ownerId }, { $inc: { 'stats.dragonsHatched': 1, kingXP: 100 } });
+        } catch (_) {}
+
+        res.status(201).json({
+            success: true,
+            message: fromEgg ? `🥚 EGG HATCHING: ${name} begins to stir — the ancient egg cracks open!` : `🐉 HATCHING: ${name} stirs within the egg. The wait begins.`,
+            dragon,
+            village
+        });
+    } catch (error) {
+        console.error("Hatch Dragon Error:", error);
+        res.status(500).json({ error: "⚡ OMEN: The egg has cracked before its time." });
+    }
+};
+
+// 🐉 DRAGON'S PIT — TRAIN DRAGON
+exports.trainDragon = async (req, res) => {
+    try {
+        const { villageId } = req.params;
+        const { dragonId } = req.body;
+        const villageModel = req.getVillageModel();
+        const DragonModel = req.getDragonModel();
+
+        const village = await villageModel.findById(villageId);
+        if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+
+        const dragon = await DragonModel.findById(dragonId);
+        if (!dragon || dragon.villageId.toString() !== villageId) {
+            return res.status(404).json({ error: "🐉 LOST: That dragon is not of this lair." });
+        }
+
+        if (dragon.status !== 'Idle') return res.status(400).json({ error: "🐉 BUSY: This dragon is already occupied." });
+
+        const MAX_DRAGON_LEVEL = 10;
+        if (dragon.level >= MAX_DRAGON_LEVEL) return res.status(400).json({ error: "🐉 PEAK: This dragon has reached its full might." });
+
+        const cost = { gold: dragon.level * 2000, wood: dragon.level * 500, clay: dragon.level * 300, stone: dragon.level * 800 };
+        if ((village.resources.gold || 0) < cost.gold || village.resources.wood < cost.wood ||
+            village.resources.clay < cost.clay || village.resources.stone < cost.stone) {
+            return res.status(402).json({ error: "💰 IMPOVERISHED: Thy reserves cannot sustain such rigorous training." });
+        }
+
+        village.resources.gold  -= cost.gold;
+        village.resources.wood  -= cost.wood;
+        village.resources.clay  -= cost.clay;
+        village.resources.stone -= cost.stone;
+        village.markModified('resources');
+        await village.save();
+
+        // Training duration: level * 2 hours
+        dragon.status = 'Training';
+        dragon.trainingUntil = new Date(Date.now() + dragon.level * 2 * 60 * 60 * 1000);
+        await dragon.save();
+
+        await village.populate('dragons');
+
+        res.status(200).json({
+            success: true,
+            message: `🐉 TRAINING: ${dragon.name} breathes fire and hones its fury.`,
+            dragon,
+            village
+        });
+    } catch (error) {
+        console.error("Train Dragon Error:", error);
+        res.status(500).json({ error: "⚡ OMEN: The training grounds have collapsed." });
+    }
+};
+
 exports.ascendToGladiator = async (req, res) =>
 {
     try
@@ -859,4 +1062,136 @@ exports.ascendToGladiator = async (req, res) =>
         console.error("Ascension Error:", error);
         res.status(500).json({ error: "⚡ OMEN: The gods refuse this sacrifice." });
     }
+};
+
+exports.recoverWounded = async (req, res) => {
+  try {
+    const { villageId } = req.params;
+    const villageModel = req.getVillageModel();
+
+    const village = await villageModel.findById(villageId);
+    if (!village) return res.status(404).json({ error: '🏰 MYSTERY: Village not found.' });
+
+    if (village.ownerId.toString() !== req.worldPlayer._id.toString()) {
+      return res.status(403).json({ error: '⚔️ TREASON: Not thy village.' });
+    }
+
+    if (village.buildings.hospital < 1) {
+      return res.status(403).json({ error: '🏥 FORBIDDEN: Build a Hospital first.' });
+    }
+
+    const wounded = village.army.wounded;
+    if (!wounded) return res.status(400).json({ error: '🏥 EMPTY: No wounded soldiers to treat.' });
+
+    const UNIT_KEYS = ['serf_levy','man_at_arms','longbowman','spearman','swordsman','archer',
+      'palfrey_messenger','gilded_knight','light_knight','ram','catapult'];
+
+    let totalRecovered = 0;
+    for (const key of UNIT_KEYS) {
+      const count = wounded[key] || 0;
+      if (count > 0) {
+        village.army[key] = (village.army[key] || 0) + count;
+        village.army.wounded[key] = 0;
+        totalRecovered += count;
+      }
+    }
+
+    if (totalRecovered === 0) {
+      return res.status(400).json({ error: '🏥 EMPTY: No wounded soldiers to treat.' });
+    }
+
+    village.markModified('army');
+    await village.save();
+
+    // Small XP reward for using hospital
+    try {
+      const WPModel = req.getWorldPlayerModel();
+      await WPModel.updateOne({ _id: req.worldPlayer._id }, { $inc: { kingXP: Math.floor(totalRecovered / 5) } });
+    } catch (_) {}
+
+    res.status(200).json({
+      success: true,
+      message: `🏥 HEALED: ${totalRecovered} soldiers have returned to thy host!`,
+      village
+    });
+  } catch (error) {
+    console.error('Recover Wounded Error:', error);
+    res.status(500).json({ error: '⚡ OMEN: The surgeons have failed.' });
+  }
+};
+
+exports.conquerVillage = async (req, res) => {
+  try {
+    const { villageId, worldId } = req.params;
+    const { targetVillageId } = req.body;
+
+    if (!targetVillageId) {
+      return res.status(400).json({ error: '⚔️ MISSING: No target village specified.' });
+    }
+
+    const villageModel = req.getVillageModel();
+    const wpModel = req.getWorldPlayerModel();
+
+    // Load attacker's village (must own it)
+    const attackerVillage = await villageModel.findOne({ _id: villageId, ownerId: req.worldPlayer._id });
+    if (!attackerVillage) {
+      return res.status(403).json({ error: '⚔️ TREASON: This is not thy village.' });
+    }
+
+    // Load target village
+    const targetVillage = await villageModel.findById(targetVillageId);
+    if (!targetVillage) {
+      return res.status(404).json({ error: '🏰 MYSTERY: That village no longer exists.' });
+    }
+
+    // Cannot conquer own village or already conquered
+    if (targetVillage.ownerId.toString() === req.worldPlayer._id.toString()) {
+      return res.status(400).json({ error: '⚔️ FOLLY: Thou already own this land.' });
+    }
+
+    // Check that defender's army is fully defeated (0 active troops)
+    const armyKeys = ['serf_levy','man_at_arms','longbowman','spearman','swordsman','archer',
+      'palfrey_messenger','gilded_knight','light_knight','ram','catapult','noble','common_slave'];
+    const defenderStrength = armyKeys.reduce((s, k) => s + (targetVillage.army[k] || 0), 0);
+    if (defenderStrength > 0) {
+      return res.status(400).json({ error: '⚔️ RESISTANCE: The village still defends itself. Crush them first!' });
+    }
+
+    const prevOwnerId = targetVillage.ownerId;
+    const attackerName = req.worldPlayer.username;
+
+    // Transfer ownership
+    targetVillage.ownerId = req.worldPlayer._id;
+    targetVillage.ownerName = attackerName;
+    targetVillage.name = `${attackerName}'s Conquest`;
+
+    // Clear reinforcements (they belonged to the old owner's allies)
+    targetVillage.reinforcements = [];
+    targetVillage.markModified('reinforcements');
+
+    await targetVillage.save();
+
+    // Update WorldPlayer records
+    await Promise.all([
+      wpModel.updateOne({ _id: req.worldPlayer._id }, { $inc: { villagesCount: 1, kingXP: 200 } }),
+      wpModel.updateOne({ _id: prevOwnerId }, { $inc: { villagesCount: -1 } }),
+    ]);
+
+    // Recompute king level for conqueror
+    const conquerer = await wpModel.findById(req.worldPlayer._id).select('kingXP').lean();
+    if (conquerer) {
+      const newLevel = Math.min(20, Math.floor(Math.sqrt(conquerer.kingXP / 100)) + 1);
+      await wpModel.updateOne({ _id: req.worldPlayer._id }, { kingLevel: newLevel });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `⚔️ CONQUEST: ${targetVillage.name} now bows to thy banner!`,
+      village: targetVillage
+    });
+
+  } catch (error) {
+    console.error('Conquer Village Error:', error);
+    res.status(500).json({ error: '⚡ OMEN: The conquest was repelled by dark forces.' });
+  }
 };

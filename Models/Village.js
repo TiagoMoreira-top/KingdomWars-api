@@ -139,10 +139,17 @@ const VillageSchema = new mongoose.Schema({
         }
     },
 
-    gladiators: [{ 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'Gladiator' 
+    gladiators: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Gladiator'
     }],
+
+    dragons: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Dragon'
+    }],
+
+    dragonEgg: { type: mongoose.Schema.Types.ObjectId, ref: 'DragonEgg', default: null },
 
     // --- THE QUEUES ---
     upgradeQueue: [
@@ -267,7 +274,8 @@ const VillageSchema = new mongoose.Schema({
 
     // --- SETTLEMENT STATUS ---
     loyalty: { type: Number, default: 100 },
-    lastLoyaltyUpdate: { type: Date, default: Date.now }
+    lastLoyaltyUpdate: { type: Date, default: Date.now },
+    lastMassTime: { type: Date, default: null }
 }, { timestamps: true });
 
 VillageSchema.index({ worldId: 1, x: 1, y: 1 }, { unique: true });

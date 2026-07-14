@@ -136,6 +136,18 @@ exports.getWorldCensus = async (req, res) => {
   }
 };
 
+exports.getHallOfFame = async (req, res) => {
+  try {
+    const world = await World.findById(req.params.worldId)
+      .select('name status winner endedAt hallOfFame victoryThreshold')
+      .lean();
+    if (!world) return res.status(404).json({ error: 'World not found.' });
+    res.json(world);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 exports.getWorldRankings = async (req, res) => {
   try {
     const worldPlayerModel = req.getWorldPlayerModel();
@@ -155,10 +167,13 @@ exports.getWorldRankings = async (req, res) => {
     const formattedRankings = rankings.map((player, index) => ({
       _id: player._id,
       username: player.username,
-      allianceName: player.allianceName || "Stateless Wanderer",
+      allianceName: player.allianceName || null,
       points: player.points || 0,
       villagesCount: player.villagesCount || 0,
-      rank: skip + index + 1
+      rank: skip + index + 1,
+      kingLevel: player.kingLevel || 1,
+      battlesWon: player.stats?.battlesWon || 0,
+      troopsKilled: player.stats?.troopsKilled || 0,
     }));
 
     res.status(200).json({

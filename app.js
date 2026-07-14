@@ -10,6 +10,9 @@ const playerRoutes = require('./Routes/PlayerRoutes');
 const ReportRoutes = require('./Routes/ReportRoutes');
 const GladiatorRoutes = require('./Routes/GladiatorRoutes');
 const MarketRoutes = require('./Routes/MarketRoutes');
+const AllianceRoutes = require('./Routes/AllianceRoutes');
+const MessageRoutes  = require('./Routes/MessageRoutes');
+const { startVictoryCron } = require('./services/VictoryService');
 
 const app = express();
 
@@ -35,8 +38,11 @@ app.use('/players', playerRoutes);
 app.use('/reports', ReportRoutes);
 app.use('/gladiators', GladiatorRoutes);
 app.use('/market', MarketRoutes);
+app.use('/alliances', AllianceRoutes);
+app.use('/messages',  MessageRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  startVictoryCron();
 });

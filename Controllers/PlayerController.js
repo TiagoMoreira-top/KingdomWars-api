@@ -29,14 +29,17 @@ exports.getProfile = async (req, res) => {
 
     const profileData = {
       _id: worldPlayer._id,
-      username: masterPlayer?.username || "Anonymous King",
+      username: masterPlayer?.username || worldPlayer.username || "Anonymous King",
       avatar: worldPlayer.avatar || "default_lord.png",
-      allianceName: worldPlayer.allianceName || "Stateless Wanderer",
+      allianceName: worldPlayer.allianceName || null,
       totalPoints: totalPoints,
       rank: worldPlayer.rank || 0,
       villagesCount: villages.length,
       joinedAt: masterPlayer?.joinedAt || worldPlayer.joinedAt,
-      villages: villages
+      villages: villages,
+      kingLevel: worldPlayer.kingLevel || 1,
+      kingXP: worldPlayer.kingXP || 0,
+      stats: worldPlayer.stats || {},
     };
 
     res.status(200).json(profileData);

@@ -5,6 +5,7 @@ const getWorldConnection = require('../config/dbManager');
 const { VillageSchema } = require('../Models/Village');
 const { MissionSchema } = require('../Models/Mission');
 const { GladiatorSchema } = require('../Models/Mission');
+const { DragonSchema } = require('../Models/Dragon');
 const { MarketOfferSchema } = require('../Models/MarketOffer');
 
 const BuildingService = require('./BuildingService');
@@ -13,34 +14,63 @@ const CensusService = require('./CensusService');
 const ResourceService = require('./ResourceService');
 const MissionService = require('./MissionService');
 const GladiatorService = require('./GladiatorService');
+const DragonService = require('./DragonService');
 const MarketService = require('./MarketService');
+const WorldPlayerSchema = require('../Models/WorldPlayer');
 
 const VillageService = {
 
-    async getUpdatedVillage(villageId, world)
+    async getUpdatedVillage(villageId, world, kingLevel = null)
     {
         const worldConn = getWorldConnection(world.dbName);
         const VillageModel = worldConn.models.Village || worldConn.model('Village', VillageSchema);
         const MissionModel = worldConn.models.Mission || worldConn.model('Mission', MissionSchema);
         const MarketOfferModel = worldConn.models.MarketOffer || worldConn.model('MarketOffer', MarketOfferSchema);
+        worldConn.models.Dragon || worldConn.model('Dragon', DragonSchema);
 
-        let village = await VillageModel.findById(villageId).populate('gladiators');
-        if (!village) 
+
+        let village = await VillageModel.findById(villageId).populate('gladiators').populate('dragons');
+        if (!village)
         {
             throw new Error("⚔️ EXILE: Thou hast no land in this realm!");
         }
 
         const now = Date.now();
 
+        // Resolve king level for perk application (only look up if not passed in)
+        let resolvedKingLevel = kingLevel;
+        if (resolvedKingLevel === null) {
+          try {
+            const WPModel = worldConn.models.WorldPlayer || worldConn.model('WorldPlayer', WorldPlayerSchema);
+            const wp = await WPModel.findOne({ _id: village.ownerId }).select('kingLevel').lean();
+            resolvedKingLevel = wp?.kingLevel || 1;
+          } catch (_) { resolvedKingLevel = 1; }
+        }
+
         // 🏗️ 1. MASONRY SERVICE
         village = BuildingService.processUpgrades(village, now);
+        const completedBuildings = village._completedBuildingCount || 0;
+        if (completedBuildings > 0 && worldConn.models.WorldPlayer) {
+          const WPModel = worldConn.models.WorldPlayer;
+          const xpGain = completedBuildings * 10;
+          const wp = await WPModel.findOneAndUpdate(
+            { _id: village.ownerId },
+            { $inc: { 'stats.buildingsConstructed': completedBuildings, kingXP: xpGain } },
+            { new: true, select: 'kingXP' }
+          );
+          if (wp) {
+            const newLevel = Math.min(20, Math.floor(Math.sqrt(wp.kingXP / 100)) + 1);
+            await WPModel.updateOne({ _id: village.ownerId }, { kingLevel: newLevel });
+          }
+        }
 
         // ⚔️ 2. WAR SERVICE
         village = MilitaryService.processRecruitment(village, now);
         village = GladiatorService.processTraining(village, now);
+        village = DragonService.processHatching(village, now);
 
         // 🪵 3. RESOURCE SERVICE
-        village = ResourceService.tick(village);
+        village = ResourceService.tick(village, resolvedKingLevel);
 
         // 🏹 4. MISSION SERVICE
         village = await MissionService.processArrivals(village, worldConn, now);
@@ -65,10 +95,12 @@ const VillageService = {
         await village.save();
 
         await Promise.all(village.gladiators.map(g => g.save()));
+        await Promise.all((village.dragons || []).map(d => d.save()));
 
         // Final Population for Frontend
         await village.populate([
             { path: 'gladiators' },
+            { path: 'dragons' },
             {
                 path: 'outgoingMissions',
                 populate: { path: 'targetVillage', select: 'name x y ownerId' }

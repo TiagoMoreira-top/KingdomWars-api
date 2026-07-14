@@ -6,6 +6,7 @@ const { calculateProduction } = require('../utils/functions');
 const BuildingService = {
     processUpgrades(village, now) {
         const completedJobs = village.upgradeQueue.filter(job => job.finishTime <= now);
+        village._completedBuildingCount = completedJobs.length;
         if (completedJobs.length === 0) return village;
 
         let greatHallUpgraded = false;

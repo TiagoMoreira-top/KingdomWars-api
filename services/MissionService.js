@@ -2,6 +2,9 @@ const UNITS = require('../config/units');
 const { VillageSchema } = require('../Models/Village');
 const { MissionSchema } = require('../Models/Mission');
 const { ReportSchema } = require('../Models/Report');
+const WorldPlayerSchema = require('../Models/WorldPlayer');
+const { DragonEggSchema } = require('../Models/DragonEgg');
+const { getPerkMultipliers } = require('../config/kingPerks');
 
 const MissionService = {
   async processArrivals(village, worldConn, now) {
@@ -21,7 +24,9 @@ const MissionService = {
 
     for (const mission of arrivedMissions) {
       if (mission.type === 'attack') {
-        await this.resolveAttack(village, mission, VillageModel, MissionModel, ReportModel);
+        await this.resolveAttack(village, mission, VillageModel, MissionModel, ReportModel, worldConn);
+      } else if (mission.type === 'scout') {
+        await this.resolveScout(village, mission, VillageModel, MissionModel, ReportModel, worldConn);
       } else if (mission.type === 'support') {
         await this.resolveSupport(village, mission, ReportModel);
       } else if (mission.type === 'return') {
@@ -39,7 +44,7 @@ const MissionService = {
     return village;
   },
 
-  async resolveAttack(defenderVillage, mission, VillageModel, MissionModel, ReportModel)
+  async resolveAttack(defenderVillage, mission, VillageModel, MissionModel, ReportModel, worldConn)
   {
       const attackerUnits = mission.units;
       const defenderUnits = defenderVillage.army;
@@ -50,19 +55,30 @@ const MissionService = {
       const attackerInitial = Object.fromEntries(attackerUnits);
       const defenderInitial = defenderUnits.toObject ? defenderUnits.toObject() : { ...defenderUnits };
 
-      // 1. Calculate Attacker Strength
+      // Load king perks for attacker and defender
+      const WPModelForPerks = worldConn.models.WorldPlayer || worldConn.model('WorldPlayer', WorldPlayerSchema);
+      const [atkWP, defWP] = await Promise.all([
+        WPModelForPerks.findById(mission.lord).select('kingLevel').lean(),
+        WPModelForPerks.findById(defenderVillage.ownerId).select('kingLevel').lean(),
+      ]);
+      const atkPerks = getPerkMultipliers(atkWP?.kingLevel || 1);
+      const defPerks = getPerkMultipliers(defWP?.kingLevel || 1);
+
+      // 1. Calculate Attacker Strength (with perk bonus)
       for (const [uKey, count] of attackerUnits.entries())
       {
           totalAtk += (UNITS[uKey]?.attack || 0) * count;
       }
+      totalAtk = Math.floor(totalAtk * (1 + atkPerks.attackBonus));
 
-      // 2. Calculate Defender Strength (Wall Bonus)
+      // 2. Calculate Defender Strength (Wall Bonus + perk bonus)
       const wallBonus = 1 + ((defenderVillage.buildings?.wall || 0) * 0.05);
       for (const [uKey, count] of Object.entries(defenderInitial))
       {
           if (uKey === '_id' || uKey === '__v' || uKey === 'wounded') continue;
           totalDef += (UNITS[uKey]?.defenseInfantry || 0) * count * wallBonus;
       }
+      totalDef = Math.floor(totalDef * (1 + defPerks.defenseBonus));
 
       const atkWin = totalAtk > totalDef;
       const lossRatio = totalDef === 0 || totalAtk === 0 ? 0 : (atkWin ? (totalDef / totalAtk) : (totalAtk / totalDef));
@@ -70,7 +86,7 @@ const MissionService = {
       // 🏥 HOSPITAL SURVIVAL LOGIC (Normal Units Only)
       // Every level of hospital saves 5% of the troops that would have died
       const hospLevel = defenderVillage.buildings?.hospital || 0;
-      const survivalRate = Math.min(hospLevel * 0.05, 0.50); // Cap at 50% recovery
+      const survivalRate = Math.min(hospLevel * 0.05 * (1 + defPerks.hospitalBonus), 0.60); // Perk raises cap slightly
 
       const attackerLosses = {};
       const defenderLosses = {};
@@ -119,7 +135,7 @@ const MissionService = {
           if (survivors > 0)
           {
               returningUnits[uKey] = survivors;
-              totalCapacity += (UNITS[uKey]?.capacity || 0) * survivors;
+              totalCapacity += (UNITS[uKey]?.capacity || 0) * survivors * (1 + atkPerks.lootBonus);
               anySurvivors = true;
           }
       }
@@ -153,13 +169,42 @@ const MissionService = {
           result: atkWin ? 'Victory' : 'Defeat'
       };
 
+      // Dragon Egg Transfer: if attacker wins and defender has an egg
+      let dragonEggFound = false;
+      if (atkWin && defenderVillage.dragonEgg) {
+        try {
+          const DragonEggModel = worldConn.models.DragonEgg || worldConn.model('DragonEgg', DragonEggSchema);
+          const egg = await DragonEggModel.findById(defenderVillage.dragonEgg);
+          if (egg) {
+            egg.foundBy = mission.originVillage._id;
+            egg.takenAt = new Date();
+            await egg.save();
+            // Transfer to origin village
+            await VillageModel.findByIdAndUpdate(mission.originVillage._id, { dragonEgg: egg._id });
+            defenderVillage.dragonEgg = null;
+            dragonEggFound = true;
+          }
+        } catch (e) { console.error('Egg transfer error:', e); }
+      }
+
+      // Conquerable: attacker wins (all defenders defeated)
+      const isConquerable = atkWin && defenderVillage.ownerId.toString() !== mission.lord.toString();
+
       // Attacker Report
       await new ReportModel({
           recipient: mission.lord,
           type: 'MISSION_COMBAT',
           title: `Battle at ${defenderVillage.name}`,
           originVillage: mission.originVillage._id,
-          data: { ...commonData, loot: lootedResources, losses: attackerLosses, unitsSent: attackerInitial }
+          data: {
+            ...commonData,
+            loot: lootedResources,
+            losses: attackerLosses,
+            unitsSent: attackerInitial,
+            dragonEggFound,
+            conquerable: isConquerable,
+            targetVillageId: defenderVillage._id.toString(),
+          }
       }).save();
 
       // Defender Report (Shows permanent losses and saved wounded)
@@ -170,6 +215,50 @@ const MissionService = {
           originVillage: mission.originVillage._id,
           data: { ...commonData, result: atkWin ? 'Defeat' : 'Victory', lootLost: lootedResources, losses: defenderLosses, wounded: newlyWounded, unitsDefending: defenderInitial }
       }).save();
+
+      // 6b. ── STAT TRACKING ──────────────────────────────────────────────────
+      if (worldConn) {
+        try {
+          const WorldPlayerModel = worldConn.models.WorldPlayer || worldConn.model('WorldPlayer', WorldPlayerSchema);
+          const atkKilled  = Object.values(defenderLosses).reduce((s, n) => s + n, 0);
+          const atkLost    = Object.values(attackerLosses).reduce((s, n) => s + n, 0);
+          const plundered  = Object.values(lootedResources).reduce((s, n) => s + n, 0);
+          const atkXPGain  = (atkWin ? 50 : 10) + atkKilled;
+          const defXPGain  = (atkWin ? 5 : 30) + atkLost;
+
+          await Promise.all([
+            WorldPlayerModel.updateOne({ _id: mission.lord }, {
+              $inc: {
+                'stats.battlesWon':         atkWin ? 1 : 0,
+                'stats.battlesLost':        atkWin ? 0 : 1,
+                'stats.troopsKilled':       atkKilled,
+                'stats.troopsLost':         atkLost,
+                'stats.resourcesPlundered': plundered,
+                kingXP: atkXPGain,
+              }
+            }),
+            WorldPlayerModel.updateOne({ _id: defenderVillage.ownerId }, {
+              $inc: {
+                'stats.battlesWon':  atkWin ? 0 : 1,
+                'stats.battlesLost': atkWin ? 1 : 0,
+                'stats.troopsKilled': atkLost,
+                'stats.troopsLost':   atkKilled,
+                kingXP: defXPGain,
+              }
+            }),
+          ]);
+
+          // Recompute king level for both players (floor(sqrt(XP/100)) + 1, max 20)
+          const levelFromXP = (xp) => Math.min(20, Math.floor(Math.sqrt(xp / 100)) + 1);
+          const [atkPlayer, defPlayer] = await Promise.all([
+            WorldPlayerModel.findById(mission.lord).select('kingXP').lean(),
+            WorldPlayerModel.findById(defenderVillage.ownerId).select('kingXP').lean(),
+          ]);
+          if (atkPlayer) await WorldPlayerModel.updateOne({ _id: mission.lord }, { kingLevel: levelFromXP(atkPlayer.kingXP) });
+          if (defPlayer) await WorldPlayerModel.updateOne({ _id: defenderVillage.ownerId }, { kingLevel: levelFromXP(defPlayer.kingXP) });
+        } catch (e) { console.error('Stat update error:', e); }
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       // 7. Handle Returning Army
       if (anySurvivors)
@@ -201,6 +290,53 @@ const MissionService = {
 
       defenderVillage.markModified('army');
       defenderVillage.markModified('resources');
+  },
+
+  async resolveScout(scoutedVillage, mission, VillageModel, MissionModel, ReportModel, worldConn) {
+    // Reveal army composition and check for dragon egg
+    const armySnapshot = scoutedVillage.army ? scoutedVillage.army.toObject
+      ? scoutedVillage.army.toObject()
+      : { ...scoutedVillage.army }
+      : {};
+
+    let dragonEggPresent = false;
+    if (scoutedVillage.dragonEgg) dragonEggPresent = true;
+
+    await new ReportModel({
+      recipient: mission.lord,
+      type: 'MISSION_SCOUT',
+      title: `Scout Report: ${scoutedVillage.name}`,
+      originVillage: mission.originVillage._id,
+      data: {
+        targetName: scoutedVillage.name,
+        targetCoords: { x: scoutedVillage.x, y: scoutedVillage.y },
+        army: armySnapshot,
+        dragonEggPresent,
+        buildings: scoutedVillage.buildings,
+        resources: scoutedVillage.resources,
+      }
+    }).save();
+
+    // Return scout units to origin
+    const travelTime = new Date(mission.arrivalTime).getTime() - new Date(mission.departureTime).getTime();
+    const returnMission = new MissionModel({
+      type: 'return',
+      originVillage: mission.targetVillage,
+      targetVillage: mission.originVillage,
+      targetCoords: { x: mission.originCoords.x, y: mission.originCoords.y },
+      lord: mission.lord,
+      units: mission.units,
+      resources: { wood: 0, clay: 0, stone: 0, iron: 0 },
+      departureTime: mission.arrivalTime,
+      arrivalTime: new Date(new Date(mission.arrivalTime).getTime() + travelTime),
+      status: 'marching'
+    });
+    await returnMission.save();
+
+    await VillageModel.findByIdAndUpdate(mission.originVillage, {
+      $push: { incomingMissions: returnMission._id },
+      $pull: { outgoingMissions: mission._id }
+    });
   },
 
   async resolveReturn(village, mission, ReportModel) {

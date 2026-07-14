@@ -4,7 +4,11 @@ const { VillageSchema } = require('../Models/Village');
 const WorldPlayerSchema = require('../Models/WorldPlayer'); // ⚔️ New Import
 const MissionSchema = require('../Models/Mission');
 const GladiatorSchema = require('../Models/Gladiator');
+const { DragonSchema } = require('../Models/Dragon');
 const MarketOfferSchema = require('../Models/MarketOffer');
+const AllianceSchema = require('../Models/Alliance');
+const MessageSchema  = require('../Models/Message');
+const { DragonEggSchema } = require('../Models/DragonEgg');
 
 const worldCache = {};
 
@@ -45,6 +49,10 @@ module.exports = async (req, res, next) => {
     req.getGladiatorModel = () => {
       return worldConn.models.Gladiator || worldConn.model('Gladiator', GladiatorSchema);
     };
+
+    req.getDragonModel = () => {
+      return worldConn.models.Dragon || worldConn.model('Dragon', DragonSchema);
+    };
     
     // Helpers to get models quickly in controllers
     req.getVillageModel = () => {
@@ -60,6 +68,18 @@ module.exports = async (req, res, next) => {
     };
 
     req.getWorldPlayerModel = () => WorldPlayerModel;
+
+    req.getAllianceModel = () => {
+      return worldConn.models.Alliance || worldConn.model('Alliance', AllianceSchema);
+    };
+
+    req.getMessageModel = () => {
+      return worldConn.models.Message || worldConn.model('Message', MessageSchema);
+    };
+
+    req.getDragonEggModel = () => {
+      return worldConn.models.DragonEgg || worldConn.model('DragonEgg', DragonEggSchema);
+    };
 
     next();
   } catch (error) {

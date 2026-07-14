@@ -25,7 +25,7 @@ const MissionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['attack', 'support', 'return'],
+    enum: ['attack', 'support', 'return', 'scout'],
     required: true
   },
   units: {

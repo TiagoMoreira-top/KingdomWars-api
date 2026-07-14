@@ -1,8 +1,9 @@
 const BUILDINGS = require('../config/buildings');
 const UNITS = require('../config/units');
+const { getPerkMultipliers } = require('../config/kingPerks');
 
 const ResourceService = {
-    calculateProduction(base, multiplier, level, buildingKey = '') 
+    calculateProduction(base, multiplier, level, buildingKey = '')
     {
         // 🪙 Gold Mines at level 0 produce nothing.
         if (level === 0 && buildingKey === 'goldMine') 
@@ -24,7 +25,7 @@ const ResourceService = {
         return Math.floor(base * Math.pow(multiplier, level - 1));
     },
 
-    tick(village)
+    tick(village, kingLevel = 1)
     {
         const now = new Date();
         const lastUpdate = new Date(village.lastResourceUpdate);
@@ -34,12 +35,14 @@ const ResourceService = {
 
         const updatedResources = { ...village.resources.toObject() };
         const warehouseLvl = village.buildings.warehouse || 0;
+        const perks = getPerkMultipliers(kingLevel);
 
-        const capacity = this.calculateCapacity(
+        const baseCapacity = this.calculateCapacity(
             BUILDINGS.warehouse.storageBase,
             BUILDINGS.warehouse.growthFactor,
             warehouseLvl
         );
+        const capacity = Math.floor(baseCapacity * (1 + perks.storageBonus));
 
         updatedResources.maxStorage = capacity;
 
@@ -53,16 +56,17 @@ const ResourceService = {
             const buildingKey = `${type}Farm`;
             const level = village.buildings[buildingKey] || 0;
 
-            const hourlyRate = this.calculateProduction(
+            const baseRate = this.calculateProduction(
                 BUILDINGS[buildingKey].productionBase,
                 BUILDINGS[buildingKey].growthFactor,
                 level,
                 buildingKey
             );
+            const hourlyRate = baseRate * (1 + perks.productionBonus);
 
             production[type] = Math.floor(hourlyRate);
 
-            if (hoursElapsed > 0) 
+            if (hoursElapsed > 0)
             {
                 const gain = hourlyRate * hoursElapsed;
                 const total = (village.resources[type] || 0) + gain;
@@ -72,22 +76,20 @@ const ResourceService = {
 
         // 2. Process Gold (Infinite Capacity)
         const goldLevel = village.buildings.goldMine || 0;
-        const goldRate = this.calculateProduction(
+        const baseGoldRate = this.calculateProduction(
             BUILDINGS.goldMine.productionBase,
             BUILDINGS.goldMine.growthFactor,
             goldLevel,
             'goldMine'
         );
+        const goldRate = baseGoldRate * (1 + perks.productionBonus);
 
-        // Record gold rate for the Monarch's Topbar
         production.gold = Math.floor(goldRate);
 
-        if (hoursElapsed > 0) 
+        if (hoursElapsed > 0)
         {
             const goldGain = goldRate * hoursElapsed;
             const totalGold = (village.resources.gold || 0) + goldGain;
-            
-            // 💰 Gold is NOT capped by capacity
             updatedResources.gold = Math.floor(totalGold);
         }
 
