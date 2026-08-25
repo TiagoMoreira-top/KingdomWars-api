@@ -1,6 +1,7 @@
 const World = require('../Models/World');
 const VillageService = require('../services/VillageService');
 const WorldService = require('../services/WorldService'); // ⚔️ New Service Import
+const BarbarianService = require('../services/BarbarianService');
 
 exports.getAvailableWorlds = async (req, res) => {
     try {
@@ -25,7 +26,8 @@ exports.joinWorld = async (req, res) => {
 
         // 1. 📜 INSCRIBE: Ensure the player has a local WorldPlayer profile
         // This connects to the specific world DB via WorldService
-        const worldPlayer = await WorldService.getOrCreateWorldPlayer(req.player, world);
+        const { race } = req.body || {};
+        const worldPlayer = await WorldService.getOrCreateWorldPlayer(req.player, world, race);
 
         // 2. Register in Master DB (Global World list)
         if (!world.players.includes(req.player._id)) {
@@ -35,6 +37,14 @@ exports.joinWorld = async (req, res) => {
 
         // 3. 🏰 FOUND: Establish the first village
         const village = await VillageService.createNewVillage(worldPlayer, world);
+
+        // 🪓 Scatter a few unclaimed holdings within a short march, so the
+        // opening quest chain has something to point at that is not a person.
+        try {
+            await BarbarianService.seedNeighbours(world, village.x, village.y);
+        } catch (err) {
+            console.error('Barbarian seeding failed:', err.message);
+        }
 
         // 4. 📈 RECORD: Increment village count in the local world DB
         await WorldService.incrementVillages(worldPlayer._id, world);
@@ -75,8 +85,8 @@ exports.getMap = async (req, res) => {
       x: { $gte: minX, $lte: maxX },
       y: { $gte: minY, $lte: maxY }
     })
-    .select('name x y ownerId points upgradeQueue')
-    .populate('ownerId', 'username')
+    .select('name x y ownerId points upgradeQueue isBarbarian barbarianTier')
+    .populate('ownerId', 'username allianceId allianceName isBarbarian')
     .lean();
 
     const tiles = [];
@@ -94,6 +104,17 @@ exports.getMap = async (req, res) => {
             ownerName: foundVillage.ownerId?.username || "Abandoned Keep",
             points: foundVillage.points,
             isOwn: foundVillage.ownerId?._id?.toString() === req.worldPlayer._id.toString(),
+            // 🪓 Scenery, not a rival — the client draws these differently
+            isBarbarian: Boolean(foundVillage.isBarbarian),
+            barbarianTier: foundVillage.barbarianTier || 0,
+            // 🛡️ So allied holdings can be told apart at a glance
+            allianceId: foundVillage.ownerId?.allianceId?.toString() || null,
+            allianceName: foundVillage.ownerId?.allianceName || null,
+            isAlly: Boolean(
+              req.worldPlayer.allianceId &&
+              foundVillage.ownerId?.allianceId &&
+              foundVillage.ownerId.allianceId.toString() === req.worldPlayer.allianceId.toString()
+            ),
             isUpgrading: foundVillage.upgradeQueue && foundVillage.upgradeQueue.length > 0
           } : null
         });
@@ -156,12 +177,12 @@ exports.getWorldRankings = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const [rankings, totalPlayers] = await Promise.all([
-      worldPlayerModel.find({})
+      worldPlayerModel.find({ isBarbarian: { $ne: true } })
         .sort({ points: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
-      worldPlayerModel.countDocuments({})
+      worldPlayerModel.countDocuments({ isBarbarian: { $ne: true } })
     ]);
 
     const formattedRankings = rankings.map((player, index) => ({

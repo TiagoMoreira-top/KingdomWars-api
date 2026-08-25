@@ -27,13 +27,19 @@ const VillageSchema = new mongoose.Schema({
 
     points: { type: Number, default: 0 },
 
+    // 🪓 Unclaimed holdings. Ordinary villages in every other respect, so
+    // the map, combat and reports need no special case for them.
+    isBarbarian:   { type: Boolean, default: false, index: true },
+    barbarianTier: { type: Number, default: 0 },
+
     // --- THE TREASURY ---
     resources: {
         wood:  { type: Number, default: 500 },
         clay:  { type: Number, default: 500 },
         stone: { type: Number, default: 500 },
         gold:  { type: Number, default: 0 }, 
-        maxStorage: { type: Number, default: 1000 }
+        maxStorage: { type: Number, default: 1000 },
+        maxGold:    { type: Number, default: 0 }
     },
 
     production: {
@@ -92,6 +98,12 @@ const VillageSchema = new mongoose.Schema({
         farm:         { type: Number, default: 1 },
         warehouse:    { type: Number, default: 1 },
         wall:         { type: Number, default: 0 },
+
+        // 🩸 Signature structures — only the owning people may raise these
+        mint:         { type: Number, default: 0 },
+        deepForge:    { type: Number, default: 0 },
+        mootGrove:    { type: Number, default: 0 },
+        warPit:       { type: Number, default: 0 },
     },
 
     // --- THE POPULACE ---
@@ -124,6 +136,20 @@ const VillageSchema = new mongoose.Schema({
         catapult:          { type: Number, default: 0 },
         noble:             { type: Number, default: 0 },
         common_slave:      { type: Number, default: 0 },
+
+        // 🩸 Race troops
+        halberdier:        { type: Number, default: 0 },
+        crown_lancer:      { type: Number, default: 0 },
+        trebuchet_crew:    { type: Number, default: 0 },
+        shieldbearer:      { type: Number, default: 0 },
+        oathsworn:         { type: Number, default: 0 },
+        stonethrower:      { type: Number, default: 0 },
+        thornguard:        { type: Number, default: 0 },
+        glade_ranger:      { type: Number, default: 0 },
+        stag_rider:        { type: Number, default: 0 },
+        berserker:         { type: Number, default: 0 },
+        wolf_rider:        { type: Number, default: 0 },
+        firethrower:       { type: Number, default: 0 },
         wounded: {
             serf_levy:         { type: Number, default: 0 },
             man_at_arms:       { type: Number, default: 0 },
@@ -152,6 +178,23 @@ const VillageSchema = new mongoose.Schema({
     dragonEgg: { type: mongoose.Schema.Types.ObjectId, ref: 'DragonEgg', default: null },
 
     // --- THE QUEUES ---
+    // --- 📜 THE LIBRARY'S WORK ---
+    // Completed studies are permanent and village-wide.
+    completedResearches: [{ type: String }],
+    researchQueue: [
+        {
+            researchKey: { type: String },
+            startTime:   { type: Number },
+            finishTime:  { type: Number },
+            costs: {
+                wood:  { type: Number },
+                clay:  { type: Number },
+                stone: { type: Number },
+                gold:  { type: Number }
+            }
+        }
+    ],
+
     upgradeQueue: [
         {
             building:    { type: String },

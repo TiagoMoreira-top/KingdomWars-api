@@ -26,30 +26,22 @@ const KING_PERKS = [
  * Returns cumulative perk multipliers for a given king level.
  * All bonuses stack additively.
  */
-function getPerkMultipliers(kingLevel) {
-  const multipliers = {
-    attackBonus:       0,
-    defenseBonus:      0,
-    productionBonus:   0,
-    storageBonus:      0,
-    buildTimeReduction: 0,
-    hospitalBonus:     0,
-    speedBonus:        0,
-    lootBonus:         0,
-    dragonBonus:       0,
-    godKingBonus:      0,
-  };
-
-  for (let i = 1; i < Math.min(kingLevel, KING_PERKS.length); i++) {
-    const perk = KING_PERKS[i];
-    if (perk) multipliers[perk.key] += perk.value;
-  }
-
-  // godKingBonus adds to both attack and defense
-  multipliers.attackBonus  += multipliers.godKingBonus;
-  multipliers.defenseBonus += multipliers.godKingBonus;
-
-  return multipliers;
+/**
+ * 👑 Cumulative multipliers for a king.
+ *
+ * The tree replaced the automatic ladder: bonuses now come from nodes the
+ * lord chose, not from the level alone. Pass the WorldPlayer (or anything
+ * carrying `kingNodes`) to resolve them.
+ *
+ * Called with a bare number — the old signature — it returns a zeroed set,
+ * because a king who has spent no points has earned no bonuses.
+ */
+function getPerkMultipliers(playerOrLevel) {
+  const KingService = require('../services/KingService');
+  const player = (playerOrLevel && typeof playerOrLevel === 'object')
+    ? playerOrLevel
+    : { kingLevel: playerOrLevel || 1, kingNodes: [] };
+  return KingService.multipliers(player);
 }
 
 module.exports = { KING_PERKS, getPerkMultipliers };

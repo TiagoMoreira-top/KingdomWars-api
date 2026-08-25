@@ -13,6 +13,14 @@ const WorldPlayerSchema = new mongoose.Schema({
   username: { type: String, required: true },
   avatar: { type: String, default: 'default_lord.png' },
 
+  // 🩸 The oath sworn on entering this realm. Permanent — a lord may not
+  // change people once their first village stands.
+  race: { type: String, default: 'ashvale', index: true },
+
+  // 🪓 The sentinel that nominally holds every barbarian village. Excluded
+  // from rankings and the census — it is scenery, not a rival.
+  isBarbarian: { type: Boolean, default: false, index: true },
+
   // ⚔️ Global Worth in this Realm
   points: { type: Number, default: 0 },
   rank: { type: Number, default: 0 },
@@ -29,6 +37,17 @@ const WorldPlayerSchema = new mongoose.Schema({
   // 👑 The King
   kingXP:    { type: Number, default: 0 },
   kingLevel: { type: Number, default: 1 },
+
+  // 👑 The crown's chosen callings, one entry per rank held. A flat list
+  // keeps spending an append and refunding a filter — no rank table to
+  // drift out of step.
+  kingNodes: [{ type: String }],
+
+  // 📜 The steward's ledger — which charges have been paid out.
+  // Progress itself is never stored; it is derived from live state.
+  quests: {
+    claimed: [{ type: String }]
+  },
 
   // 📜 Battle Chronicle
   stats: {

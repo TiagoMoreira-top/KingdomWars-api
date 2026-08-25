@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const BarbarianService = require('./BarbarianService');
 const World = require('../Models/World');
 const getWorldConnection = require('../config/dbManager');
 const WorldPlayerSchema = require('../Models/WorldPlayer');
@@ -105,6 +106,22 @@ function startVictoryCron() {
   runEggSeeding();
   cron.schedule('0 */6 * * *', runEggSeeding);
   console.log('⚔️ Victory Cron: watching the realm every 30 minutes.');
+
+  // 🪓 The countryside: topped up every four hours, stirs every hour.
+  const runBarbarians = async (job) => {
+    try {
+      const worlds = await World.find({ status: 'online' }).lean();
+      for (const w of worlds) await job(w);
+    } catch (err) {
+      console.error('🪓 BARBARIAN ERROR:', err.message);
+    }
+  };
+
+  const { BARBARIANS } = require('../config/barbarians');
+  runBarbarians(w => BarbarianService.ensurePopulated(w));
+  cron.schedule(BARBARIANS.SEED_CRON, () => runBarbarians(w => BarbarianService.ensurePopulated(w)));
+  cron.schedule(BARBARIANS.GROWTH_CRON, () => runBarbarians(w => BarbarianService.grow(w)));
+  console.log('🪓 Barbarian Cron: the countryside stirs hourly.');
 }
 
 module.exports = { startVictoryCron, runVictoryCheck, seedDragonEggs };

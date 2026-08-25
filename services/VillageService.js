@@ -9,6 +9,7 @@ const { DragonSchema } = require('../Models/Dragon');
 const { MarketOfferSchema } = require('../Models/MarketOffer');
 
 const BuildingService = require('./BuildingService');
+const ResearchService = require('./ResearchService');
 const MilitaryService = require('./MilitaryService');
 const CensusService = require('./CensusService');
 const ResourceService = require('./ResourceService');
@@ -42,12 +43,18 @@ const VillageService = {
         if (resolvedKingLevel === null) {
           try {
             const WPModel = worldConn.models.WorldPlayer || worldConn.model('WorldPlayer', WorldPlayerSchema);
-            const wp = await WPModel.findOne({ _id: village.ownerId }).select('kingLevel').lean();
+            const wp = await WPModel.findOne({ _id: village.ownerId }).select('kingLevel race').lean();
             resolvedKingLevel = wp?.kingLevel || 1;
+            village._crown = wp || null;
+            village._raceKey = wp?.race || 'ashvale';
           } catch (_) { resolvedKingLevel = 1; }
         }
 
         // 🏗️ 1. MASONRY SERVICE
+        // 📜 Settle finished studies first, so knowledge earned this tick
+        // is already paying out when resources are calculated below.
+        village = ResearchService.processResearch(village, now);
+
         village = BuildingService.processUpgrades(village, now);
         const completedBuildings = village._completedBuildingCount || 0;
         if (completedBuildings > 0 && worldConn.models.WorldPlayer) {
@@ -70,7 +77,7 @@ const VillageService = {
         village = DragonService.processHatching(village, now);
 
         // 🪵 3. RESOURCE SERVICE
-        village = ResourceService.tick(village, resolvedKingLevel);
+        village = ResourceService.tick(village, village._crown || resolvedKingLevel, ResearchService.getModifiers(village, village._raceKey || 'ashvale'));
 
         // 🏹 4. MISSION SERVICE
         village = await MissionService.processArrivals(village, worldConn, now);

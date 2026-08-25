@@ -98,6 +98,7 @@ const UNITS = {
     baseCost: { wood: 50, clay: 50, stone: 20 },
     trainTime: 90,
     population: 2,
+    category: 'cavalry',
     attack: 0,
     defenseGeneral: 5,
     defenseCavalry: 2,
@@ -111,6 +112,7 @@ const UNITS = {
     baseCost: { wood: 150, clay: 120, stone: 200 },
     trainTime: 300,
     population: 4,
+    category: 'cavalry',
     attack: 90,
     defenseGeneral: 30,
     defenseCavalry: 30,
@@ -124,6 +126,7 @@ const UNITS = {
     baseCost: { wood: 300, clay: 400, stone: 700 },
     trainTime: 800,
     population: 6,
+    category: 'cavalry',
     attack: 160,
     defenseGeneral: 180,
     defenseCavalry: 100,
@@ -138,6 +141,7 @@ const UNITS = {
     baseCost: { wood: 300, clay: 200, stone: 200 },
     trainTime: 1200,
     population: 5,
+    category: 'siege',
     attack: 2,
     defenseGeneral: 20,
     defenseCavalry: 50,
@@ -151,6 +155,7 @@ const UNITS = {
     baseCost: { wood: 320, clay: 400, stone: 100 },
     trainTime: 1800,
     population: 8,
+    category: 'siege',
     attack: 100,
     defenseGeneral: 100,
     defenseCavalry: 50,
@@ -173,5 +178,16 @@ const UNITS = {
     requirements: { palace: 1 }
   }
 };
+
+// 🩸 Race troops join the common roster, so every existing lookup — recruitment,
+// population, battle maths — sees them without a single call site changing.
+// ── DEFAULT CATEGORY ──
+// Anything not explicitly mounted or siege fights on foot.
+const { RACE_UNITS } = require('./races');
+Object.assign(UNITS, RACE_UNITS);
+
+for (const u of Object.values(UNITS)) {
+  if (!u.category) u.category = 'infantry';
+}
 
 module.exports = UNITS;

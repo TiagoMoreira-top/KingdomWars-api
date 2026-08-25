@@ -1,4 +1,30 @@
+const BUILDINGS = require('../config/buildings');
+
 class GladiatorService {
+  /**
+   * 🗡️ How many gladiators this village may keep at once.
+   * No Arena means no pits, and therefore no stable at all.
+   */
+  static maxGladiators(village) {
+    const arena = (village.buildings && village.buildings.arena) || 0;
+    if (arena < 1) return 0;
+    const cfg = BUILDINGS.arena || {};
+    const base = cfg.gladiatorBase || 1;
+    const per = cfg.gladiatorLevelsPerSlot || 4;
+    return base + Math.floor(arena / per);
+  }
+
+  /**
+   * The living stable. The dead still sit in the village's array as a record
+   * of who fought here, so they must not count against the living cap.
+   */
+  static livingGladiators(village) {
+    return (village.gladiators || []).filter(g => {
+      const status = g && typeof g === 'object' ? g.status : null;
+      return status !== 'Dead';
+    });
+  }
+
   static processTraining(village, now) {
     if (!village.gladiators || village.gladiators.length === 0) return village;
 

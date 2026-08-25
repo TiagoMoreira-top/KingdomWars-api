@@ -49,7 +49,8 @@ const MissionService = {
       const attackerUnits = mission.units;
       const defenderUnits = defenderVillage.army;
 
-      let totalAtk = 0;
+let totalAtk = 0;
+      let cavalryAtk = 0;
       let totalDef = 0;
       let totalCapacity = 0;
       const attackerInitial = Object.fromEntries(attackerUnits);
@@ -58,25 +59,49 @@ const MissionService = {
       // Load king perks for attacker and defender
       const WPModelForPerks = worldConn.models.WorldPlayer || worldConn.model('WorldPlayer', WorldPlayerSchema);
       const [atkWP, defWP] = await Promise.all([
-        WPModelForPerks.findById(mission.lord).select('kingLevel').lean(),
-        WPModelForPerks.findById(defenderVillage.ownerId).select('kingLevel').lean(),
+        WPModelForPerks.findById(mission.lord).select('kingLevel race kingNodes').lean(),
+        WPModelForPerks.findById(defenderVillage.ownerId).select('kingLevel kingNodes').lean(),
       ]);
-      const atkPerks = getPerkMultipliers(atkWP?.kingLevel || 1);
-      const defPerks = getPerkMultipliers(defWP?.kingLevel || 1);
+      const atkPerks = getPerkMultipliers(atkWP);
+
+      // 🩸📜 The attacker's blood and books both affect what they can carry.
+      // Guarded: an origin village with no populated research list simply
+      // contributes nothing rather than throwing.
+      let attackerLootBonus = 0;
+      try {
+        const { getRaceTraits } = require('../config/races');
+        const { sumEffect } = require('../config/researches');
+        attackerLootBonus =
+          (getRaceTraits(atkWP?.race).lootCapacity || 0) +
+          sumEffect(mission.originVillage?.completedResearches || [], 'loot_capacity');
+      } catch (_) { attackerLootBonus = 0; }
+      const defPerks = getPerkMultipliers(defWP);
 
       // 1. Calculate Attacker Strength (with perk bonus)
       for (const [uKey, count] of attackerUnits.entries())
       {
-          totalAtk += (UNITS[uKey]?.attack || 0) * count;
+          const uCfg = UNITS[uKey];
+          const power = (uCfg?.attack || 0) * count;
+          totalAtk += power;
+          if (uCfg?.category === 'cavalry') cavalryAtk += power;
       }
       totalAtk = Math.floor(totalAtk * (1 + atkPerks.attackBonus));
 
       // 2. Calculate Defender Strength (Wall Bonus + perk bonus)
       const wallBonus = 1 + ((defenderVillage.buildings?.wall || 0) * 0.05);
+      // How much of the incoming attack rides. 0 = all foot, 1 = all horse.
+      const cavalryShare = totalAtk > 0 ? cavalryAtk / totalAtk : 0;
+
       for (const [uKey, count] of Object.entries(defenderInitial))
       {
           if (uKey === '_id' || uKey === '__v' || uKey === 'wounded') continue;
-          totalDef += (UNITS[uKey]?.defenseInfantry || 0) * count * wallBonus;
+          // 🛡️ A garrison has two defence values: one against foot, one
+          // against horse. Blend them by how mounted the attack actually is.
+          const dCfg = UNITS[uKey];
+          const vsFoot = dCfg?.defenseGeneral || 0;
+          const vsHorse = dCfg?.defenseCavalry || 0;
+          const blended = vsFoot * (1 - cavalryShare) + vsHorse * cavalryShare;
+          totalDef += blended * count * wallBonus;
       }
       totalDef = Math.floor(totalDef * (1 + defPerks.defenseBonus));
 
@@ -135,16 +160,20 @@ const MissionService = {
           if (survivors > 0)
           {
               returningUnits[uKey] = survivors;
-              totalCapacity += (UNITS[uKey]?.capacity || 0) * survivors * (1 + atkPerks.lootBonus);
+              // 🐴 `lootCapacity` is the real field. Race traits (the Emberhorde
+              // carry a third again) and the Reinforced Packs study stack on the perk.
+              totalCapacity += (UNITS[uKey]?.lootCapacity || 0) * survivors
+                  * (1 + atkPerks.lootBonus + attackerLootBonus);
               anySurvivors = true;
           }
       }
 
       // 5. Looting Logic
-      const lootedResources = { wood: 0, clay: 0, stone: 0, iron: 0 };
+      // Gold is not plunderable — it lives in the mine, not the warehouse.
+      const lootedResources = { wood: 0, clay: 0, stone: 0 };
       if (atkWin && anySurvivors)
       {
-          const resourcesAvailable = ['wood', 'clay', 'stone', 'iron'];
+          const resourcesAvailable = ['wood', 'clay', 'stone'];
           const totalResValue = resourcesAvailable.reduce((sum, res) => sum + (defenderVillage.resources[res] || 0), 0);
           
           if (totalResValue > 0)
@@ -161,7 +190,24 @@ const MissionService = {
       }
 
       // 6. Finalize State and Reports
+      // Everything both sides are entitled to see. A report that hides the
+      // enemy's army cannot explain its own outcome.
+      const battleMath = {
+          attackPower: totalAtk,
+          defencePower: totalDef,
+          wallLevel: defenderVillage.buildings?.wall || 0,
+          wallBonus: Number(wallBonus.toFixed(2)),
+          cavalryShare: Number(cavalryShare.toFixed(2)),
+          hospitalLevel: hospLevel,
+          lootCapacity: Math.floor(totalCapacity),
+      };
+
       const commonData = {
+          ...battleMath,
+          unitsSent: attackerInitial,
+          unitsDefending: defenderInitial,
+          attackerLosses,
+          defenderLosses,
           targetName: defenderVillage.name,
           targetCoords: { x: defenderVillage.x, y: defenderVillage.y },
           attackerName: mission.originVillage?.name || "Unknown Lord",

@@ -2,16 +2,25 @@ const Village = require('../Models/Village');
 const Construction = require('../Models/Construction');
 const Report = require('../Models/Report');
 const VillageService = require('../services/VillageService');
+const ResearchService = require('../services/ResearchService');
+const GladiatorService = require('../services/GladiatorService');
+const { DEFAULT_RACE } = require('../config/races');
 const World = require('../Models/World');
 
 const BUILDINGS = require('../config/buildings');
 const UNITS = require('../config/units');
+const { RACES } = require('../config/races');
+const { RESEARCHES } = require('../config/researches');
+const GAME_RULES = require('../config/gameRules');
 
 exports.getConfig = async (req, res) => {
   res.status(200).json({
       success: true,
       buildings: BUILDINGS,
       units: UNITS,
+      races: RACES,
+      researches: RESEARCHES,
+      autoFinishMs: GAME_RULES.AUTO_FINISH_MS,
     });
 };
 
@@ -26,6 +35,9 @@ exports.getVillageData = async (req, res) => {
     res.status(200).json({
       success: true,
       village: village,
+      // 🩸📜 The discounts the server will actually apply. Without these the
+      // client quotes undiscounted prices and the bill never matches.
+      modifiers: ResearchService.getModifiers(village, req.worldPlayer?.race || 'ashvale'),
       serverTime: Date.now()
     });
   } catch (error) {
@@ -78,11 +90,24 @@ exports.upgradeBuilding = async (req, res) => {
     const village = await VillageService.getUpdatedVillage(villageId, req.world);
     if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
 
+    const raceKey = req.worldPlayer.race || DEFAULT_RACE;
+
+    // 🩸 A people may only raise its own signature structures
+    const raceCheck = ResearchService.canBuild(raceKey, buildingKey);
+    if (!raceCheck.ok) {
+      return res.status(403).json({ error: raceCheck.reason });
+    }
+
+    const mods = ResearchService.getModifiers(village, raceKey);
+
     const queue = village.upgradeQueue || [];
 
-    if (queue.length >= 3) {
-      return res.status(403).json({ 
-        error: "🔨 OVERWORKED: Thy masons are already handling 3 projects." 
+    // 📜 The Library's extra crews are real now. The client already promised
+    // these slots from research; the server finally honours the same number.
+    const maxSlots = GAME_RULES.BASE_BUILD_SLOTS + (mods.extraBuildSlots || 0);
+    if (queue.length >= maxSlots) {
+      return res.status(403).json({
+        error: `🔨 OVERWORKED: Thy masons are already handling ${maxSlots} projects.`
       });
     }
     
@@ -119,9 +144,12 @@ exports.upgradeBuilding = async (req, res) => {
 
     // 💰 COST CALCULATIONS
     const costMultiplierLevel = nextTargetLevel - 1;
-    const woodCost = Math.floor(bConfig.baseCost.wood * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
-    const clayCost = Math.floor(bConfig.baseCost.clay * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
-    const stoneCost = Math.floor(bConfig.baseCost.stone * Math.pow(bConfig.costMultiplier, costMultiplierLevel));
+    // 🩸📜 Ashvale masons work cheap by blood; Guild Charters cheapen everyone's.
+    // Floored at 40% so no stack of bonuses can make works nearly free.
+    const costFactor = Math.max(0.4, 1 - (mods.buildCost || 0));
+    const woodCost = Math.floor(bConfig.baseCost.wood * Math.pow(bConfig.costMultiplier, costMultiplierLevel) * costFactor);
+    const clayCost = Math.floor(bConfig.baseCost.clay * Math.pow(bConfig.costMultiplier, costMultiplierLevel) * costFactor);
+    const stoneCost = Math.floor(bConfig.baseCost.stone * Math.pow(bConfig.costMultiplier, costMultiplierLevel) * costFactor);
 
     if (village.resources.wood < woodCost || village.resources.clay < clayCost || village.resources.stone < stoneCost) {
       return res.status(402).json({ error: "💰 EMPTY VAULTS: Thy coffers lack the gold for such ambition." });
@@ -143,8 +171,12 @@ exports.upgradeBuilding = async (req, res) => {
     const speedFactor = Math.max(0.1, 1 - (ghLvl * (ghConfig.growthFactor || 0)));
 
     const { getPerkMultipliers } = require('../config/kingPerks');
-    const perkMults = getPerkMultipliers(req.worldPlayer.kingLevel || 1);
-    const perkSpeedFactor = Math.max(0.1, speedFactor * (1 - perkMults.buildTimeReduction));
+    // 👑 The crown itself, so its chosen nodes apply
+    const perkMults = getPerkMultipliers(req.worldPlayer);
+    // 🩸📜 Race blood and the Masons' Guild both shorten the work.
+    const perkSpeedFactor = Math.max(0.1,
+      speedFactor * (1 - perkMults.buildTimeReduction) * (1 - (mods.buildSpeed || 0))
+    );
 
     const buildTimeSeconds = Math.max(1, Math.floor(
       bConfig.baseBuildTime * Math.pow(bConfig.timeMultiplier, costMultiplierLevel) * perkSpeedFactor
@@ -256,9 +288,13 @@ exports.cancelUpgrade = async (req, res) => {
     });
 
     // 💰 4. RESTORE THE TREASURY
-    village.resources.wood += wood;
-    village.resources.clay += clay;
-    village.resources.stone += stone;
+    // Refunds are capped at warehouse capacity. Without this, a lord sitting on
+    // a full warehouse could queue works, let production refill the stores, then
+    // cancel — banking resources above the cap, over and over.
+    const refundCap = village.resources.maxStorage || Infinity;
+    village.resources.wood  = Math.min(refundCap, village.resources.wood  + wood);
+    village.resources.clay  = Math.min(refundCap, village.resources.clay  + clay);
+    village.resources.stone = Math.min(refundCap, village.resources.stone + stone);
     village.population.used = Math.max(0, village.population.used - population);
 
     await village.save();
@@ -272,6 +308,73 @@ exports.cancelUpgrade = async (req, res) => {
   } catch (error) {
     console.error("Cancel Upgrade Error:", error);
     res.status(500).json({ error: "⚡ OMEN: The heavens forbid halting this work." });
+  }
+};
+
+/**
+ * ⏱️ WAVE THE MASONS THROUGH
+ *
+ * A work with under three minutes left can be finished on the spot, free.
+ * The saved time is subtracted from every job queued behind it, so finishing
+ * early actually advances the whole queue rather than leaving a dead gap —
+ * `processUpgrades` only re-chains when the Great Hall levels, so the shift
+ * has to happen here.
+ */
+exports.finishBuilding = async (req, res) => {
+  try {
+    const { villageId } = req.params;
+    const { jobId } = req.body;
+    const villageModel = req.getVillageModel();
+
+    const village = await villageModel.findById(villageId);
+    if (!village) return res.status(404).json({ error: "🏰 MYSTERY: This land is not on our maps." });
+
+    const idx = (village.upgradeQueue || []).findIndex(j => String(j._id) === String(jobId));
+    if (idx === -1) {
+      return res.status(404).json({ error: "📜 VANISHED: That project is no longer in the queue." });
+    }
+
+    const job = village.upgradeQueue[idx];
+    const now = Date.now();
+    const remaining = job.finishTime - now;
+
+    // Only the work actually under way may be waved through — a job still
+    // waiting its turn has its full duration ahead of it.
+    if (idx !== 0) {
+      return res.status(403).json({ error: "🔨 QUEUED: The masons have not started this work yet." });
+    }
+
+    if (remaining > GAME_RULES.AUTO_FINISH_MS) {
+      const mins = Math.ceil(remaining / 60000);
+      return res.status(403).json({
+        error: `⏳ TOO EARLY: ${mins} minutes remain. Only the last three may be waved through.`
+      });
+    }
+
+    // Already due — the next tick would have finished it anyway.
+    const saved = Math.max(0, remaining);
+
+    job.finishTime = now;
+    for (let i = idx + 1; i < village.upgradeQueue.length; i++) {
+      village.upgradeQueue[i].startTime -= saved;
+      village.upgradeQueue[i].finishTime -= saved;
+    }
+
+    village.markModified('upgradeQueue');
+    await village.save();
+
+    // Hand off to the normal completion path so points, XP and production
+    // recalculation all happen exactly as they would have on the tick.
+    const updated = await VillageService.getUpdatedVillage(villageId, req.world);
+
+    res.status(200).json({
+      success: true,
+      message: `⚒️ COMPLETE: ${BUILDINGS[job.building]?.name || job.building} stands finished.`,
+      village: updated
+    });
+  } catch (error) {
+    console.error("Finish Building Error:", error);
+    res.status(500).json({ error: "⚡ OMEN: The masons downed tools in confusion." });
   }
 };
 
@@ -303,6 +406,18 @@ exports.recruitUnits = async (req, res) =>
         {
             return res.status(403).json({ error: "🏗️ FORBIDDEN: Thy village lacks the required architecture for these warriors." });
         }
+
+        // 🩸📜 THE TWO GATES
+        // Blood: a people fields only its own troops, and refuses some common ones.
+        // Books: a patented troop needs its patent issued by the Library first.
+        const raceKey = req.worldPlayer.race || DEFAULT_RACE;
+        const gate = ResearchService.canRecruit(village, raceKey, unitKey);
+        if (!gate.ok)
+        {
+            return res.status(403).json({ error: gate.reason });
+        }
+
+        const mods = ResearchService.getModifiers(village, raceKey);
 
         // 💰 Calculate Costs (Added Gold support for Palace units)
         const totalWood = (uConfig.baseCost.wood || 0) * amount;
@@ -350,7 +465,9 @@ exports.recruitUnits = async (req, res) =>
         const growthFactor = bConfig?.growthFactor || 0.1;
 
         const speedMultiplier = 1 + (buildingLevel * growthFactor);
-        const timePerUnit = uConfig.trainTime / speedMultiplier;
+        // 🩸📜 Emberhorde drill fast by nature; Levy Reform speeds any people.
+        const recruitFactor = Math.max(0.35, 1 - (mods.recruitSpeed || 0));
+        const timePerUnit = (uConfig.trainTime / speedMultiplier) * recruitFactor;
         const totalDuration = timePerUnit * amount;
 
         // ⏳ Calculate Timing
@@ -1002,6 +1119,20 @@ exports.ascendToGladiator = async (req, res) =>
         if (!village.army || (village.army.common_slave || 0) < 1)
         {
             return res.status(400).json({ error: "📜 FOLLY: There are no slaves in thy pits to ascend." });
+        }
+
+        // 🗡️ THE STABLE IS FINITE
+        // The Arena decides how many champions a village can house. Without
+        // this, slaves convert into an unbounded gladiator army.
+        const gladCap = GladiatorService.maxGladiators(village);
+        const living = GladiatorService.livingGladiators(village).length;
+        if (living >= gladCap)
+        {
+            return res.status(403).json({
+                error: gladCap === 0
+                    ? "🗡️ NO PITS: Build an Arena before raising champions."
+                    : `🗡️ FULL STABLE: Thy Arena houses ${gladCap} champion(s). Expand it to keep more.`
+            });
         }
 
         // 2. Validate Name
