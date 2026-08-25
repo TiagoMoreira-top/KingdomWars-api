@@ -118,10 +118,20 @@ function startVictoryCron() {
   };
 
   const { BARBARIANS } = require('../config/barbarians');
-  runBarbarians(w => BarbarianService.ensurePopulated(w));
-  cron.schedule(BARBARIANS.SEED_CRON, () => runBarbarians(w => BarbarianService.ensurePopulated(w)));
-  cron.schedule(BARBARIANS.GROWTH_CRON, () => runBarbarians(w => BarbarianService.grow(w)));
-  console.log('🪓 Barbarian Cron: the countryside stirs hourly.');
+
+  if (BARBARIANS.SPAWNING_ENABLED) {
+    runBarbarians(w => BarbarianService.ensurePopulated(w));
+    cron.schedule(BARBARIANS.SEED_CRON, () => runBarbarians(w => BarbarianService.ensurePopulated(w)));
+  }
+  if (BARBARIANS.GROWTH_ENABLED) {
+    cron.schedule(BARBARIANS.GROWTH_CRON, () => runBarbarians(w => BarbarianService.grow(w)));
+  }
+
+  console.log(
+    BARBARIANS.SPAWNING_ENABLED
+      ? '🪓 Barbarian Cron: the countryside stirs hourly.'
+      : `🛑 Barbarians: spawning PAUSED (growth ${BARBARIANS.GROWTH_ENABLED ? 'still running' : 'also paused'}).`
+  );
 }
 
 module.exports = { startVictoryCron, runVictoryCheck, seedDragonEggs };

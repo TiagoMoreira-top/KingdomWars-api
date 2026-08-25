@@ -101,6 +101,8 @@ const BarbarianService = {
    * planted — collisions are skipped, never retried forever.
    */
   async plant(world, count, { centre = null, minR = 0, maxR = 500 } = {}) {
+    // 🛑 Every creation path lands here, so this one check covers them all.
+    if (!BARBARIANS.SPAWNING_ENABLED) return 0;
     if (count <= 0) return 0;
     const { Village } = models(world);
     const owner = await this.getOwner(world);
@@ -169,6 +171,7 @@ const BarbarianService = {
    * which is what stops the countryside from becoming uniformly lethal.
    */
   async grow(world) {
+    if (!BARBARIANS.GROWTH_ENABLED) return { holdings: 0, grown: 0 };
     const { Village } = models(world);
     const holdings = await Village.find({ isBarbarian: true });
 

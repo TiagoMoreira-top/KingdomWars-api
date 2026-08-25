@@ -16,6 +16,23 @@
  */
 
 const BARBARIANS = {
+  /**
+   * 🛑 PAUSED. No new barbarian holdings are created while this is false —
+   * not on boot, not on the four-hourly top-up, and not around a lord who
+   * has just joined. Existing holdings are left exactly where they are.
+   *
+   * Set back to true to let the countryside fill again; nothing else needs
+   * changing, and the crons pick themselves back up on the next restart.
+   */
+  SPAWNING_ENABLED: false,
+
+  /**
+   * Whether the holdings that already exist keep developing toward their
+   * tier cap. Independent of spawning, so a paused countryside can either
+   * stand still or carry on hardening.
+   */
+  GROWTH_ENABLED: true,
+
   /** The sentinel who nominally holds every barbarian village in a world. */
   OWNER_NAME: 'Barbarians',
 
