@@ -59,6 +59,14 @@ const KingService = {
       if (m[node.effect.key] === undefined) continue;
       m[node.effect.key] += node.effect.value;
     }
+
+    // 🎒 Relics worn and boosts still running stack on top of the tree.
+    // Required here rather than at module load to avoid a require cycle.
+    const InventoryService = require('./InventoryService');
+    const bag = InventoryService.multipliers(worldPlayer);
+    for (const [k, v] of Object.entries(bag)) {
+      if (m[k] !== undefined) m[k] += v;
+    }
     return m;
   },
 

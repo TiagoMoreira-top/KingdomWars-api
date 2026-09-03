@@ -19,9 +19,53 @@ const DragonService = require('./DragonService');
 const MarketService = require('./MarketService');
 const WorldPlayerSchema = require('../Models/WorldPlayer');
 
+/**
+ * 🔐 One tick at a time, per village.
+ *
+ * getUpdatedVillage reads the whole village, mutates it through six services
+ * and saves it back. Two of those overlapping on the same village means the
+ * loser saves against a stale version and Mongoose rejects it (VersionError).
+ *
+ * Keyed by village id, so unrelated villages are never held up by each other.
+ * The entry is deleted once the chain drains, so this cannot grow unbounded.
+ */
+const villageLocks = new Map();
+
+function withVillageLock(villageId, fn) {
+  const key = String(villageId);
+  const prior = villageLocks.get(key) || Promise.resolve();
+
+  // Chain onto whatever is already running for this village. `.catch` keeps a
+  // failed tick from poisoning every tick queued behind it.
+  const run = prior.catch(() => {}).then(fn);
+
+  villageLocks.set(key, run);
+  run.catch(() => {}).finally(() => {
+    if (villageLocks.get(key) === run) villageLocks.delete(key);
+  });
+
+  return run;
+}
+
 const VillageService = {
 
-    async getUpdatedVillage(villageId, world, kingLevel = null)
+    /**
+     * Tick a village and return it. Serialised per village, with one retry if
+     * a writer outside this process still manages to move the version.
+     */
+    async getUpdatedVillage(villageId, world, kingLevel = null) {
+        return withVillageLock(villageId, async () => {
+            try {
+                return await VillageService._tickVillage(villageId, world, kingLevel);
+            } catch (err) {
+                if (err?.name !== 'VersionError') throw err;
+                // Someone else moved the document. Re-read and tick once more.
+                return await VillageService._tickVillage(villageId, world, kingLevel);
+            }
+        });
+    },
+
+    async _tickVillage(villageId, world, kingLevel = null)
     {
         const worldConn = getWorldConnection(world.dbName);
         const VillageModel = worldConn.models.Village || worldConn.model('Village', VillageSchema);

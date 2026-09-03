@@ -8,6 +8,8 @@ const { DragonSchema } = require('../Models/Dragon');
 const MarketOfferSchema = require('../Models/MarketOffer');
 const AllianceSchema = require('../Models/Alliance');
 const MessageSchema  = require('../Models/Message');
+const ForumThreadSchema = require('../Models/ForumThread');
+const ForumPostSchema   = require('../Models/ForumPost');
 const { DragonEggSchema } = require('../Models/DragonEgg');
 
 const worldCache = {};
@@ -75,6 +77,14 @@ module.exports = async (req, res, next) => {
 
     req.getMessageModel = () => {
       return worldConn.models.Message || worldConn.model('Message', MessageSchema);
+    };
+
+    req.getForumThreadModel = () => {
+      return worldConn.models.ForumThread || worldConn.model('ForumThread', ForumThreadSchema);
+    };
+
+    req.getForumPostModel = () => {
+      return worldConn.models.ForumPost || worldConn.model('ForumPost', ForumPostSchema);
     };
 
     req.getDragonEggModel = () => {

@@ -15,6 +15,8 @@ const MessageRoutes  = require('./Routes/MessageRoutes');
 const ResearchRoutes = require('./Routes/ResearchRoutes');
 const QuestRoutes    = require('./Routes/QuestRoutes');
 const KingRoutes     = require('./Routes/KingRoutes');
+const ForumRoutes    = require('./Routes/ForumRoutes');
+const InventoryRoutes = require('./Routes/InventoryRoutes');
 const { startVictoryCron } = require('./services/VictoryService');
 
 const app = express();
@@ -46,6 +48,8 @@ app.use('/messages',  MessageRoutes);
 app.use('/villages',  ResearchRoutes);
 app.use('/villages',  QuestRoutes);
 app.use('/worlds',    KingRoutes);
+app.use('/alliances', ForumRoutes);
+app.use('/worlds',    InventoryRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

@@ -43,6 +43,19 @@ const WorldPlayerSchema = new mongoose.Schema({
   // drift out of step.
   kingNodes: [{ type: String }],
 
+  // 🎒 The lord's baggage. `inventory` is what is owned but not in use,
+  // `equipped` the relics currently worn, `activeBoosts` the consumables
+  // still running. Boosts are filtered by expiry on read, never trusted.
+  inventory: [{
+    itemKey: { type: String, required: true },
+    qty:     { type: Number, default: 1, min: 0 },
+  }],
+  equipped: [{ type: String }],
+  activeBoosts: [{
+    itemKey:   { type: String, required: true },
+    expiresAt: { type: Number, required: true },
+  }],
+
   // 📜 The steward's ledger — which charges have been paid out.
   // Progress itself is never stored; it is derived from live state.
   quests: {
